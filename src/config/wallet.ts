@@ -1,0 +1,8 @@
+export const WALLET_CONFIG = {
+  WELCOME_CREDITS: 100,
+  TEST_CREDIT_AMOUNT: 100,
+  MIN_WITHDRAW: 50,
+  MAX_WITHDRAW: 50000,
+  WITHDRAW_FEE_PERCENT: 2, // 2% withdrawal processing fee
+  CURRENCY: 'XAF',
+};
