@@ -10,11 +10,13 @@ export interface CreateGameInput {
   userId: string;
   bet: number;
   maxPlayers?: number;
+  isPrivate?: boolean;
+  passcode?: string;
 }
 
 export class GameService {
   public static async createGame(input: CreateGameInput) {
-    const { userId, bet, maxPlayers = 2 } = input;
+    const { userId, bet, maxPlayers = 2, isPrivate = false, passcode } = input;
 
     if (bet < GAME_CONFIG.MIN_BET || bet > GAME_CONFIG.MAX_BET) {
       throw new ValidationError(`La mise doit être comprise entre ${GAME_CONFIG.MIN_BET} et ${GAME_CONFIG.MAX_BET} crédits.`);
@@ -22,6 +24,10 @@ export class GameService {
 
     if (maxPlayers < GAME_CONFIG.MIN_PLAYERS || maxPlayers > GAME_CONFIG.MAX_PLAYERS) {
       throw new ValidationError(`Le nombre de joueurs doit être entre ${GAME_CONFIG.MIN_PLAYERS} et ${GAME_CONFIG.MAX_PLAYERS}.`);
+    }
+
+    if (isPrivate && (!passcode || passcode.length < 4)) {
+      throw new ValidationError('Un code PIN d\'au moins 4 chiffres est requis pour une partie privée.');
     }
 
     return runTransaction(async (session) => {
@@ -43,6 +49,8 @@ export class GameService {
           creator: userId as any,
           maxPlayers,
           bet,
+          isPrivate,
+          passcode: isPrivate && passcode ? passcode.trim() : undefined,
           status: maxPlayers === 1 ? 'READY' : 'WAITING_FOR_PLAYERS',
           players: [
             {
@@ -78,11 +86,17 @@ export class GameService {
     });
   }
 
-  public static async joinGame(gameId: string, userId: string) {
+  public static async joinGame(gameId: string, userId: string, passcode?: string) {
     return runTransaction(async (session) => {
-      const game = await GameRepository.findById(gameId, session);
+      const game = await GameRepository.findById(gameId, session, true);
       if (!game) {
         throw new NotFoundError('Partie non trouvée.');
+      }
+
+      if (game.isPrivate) {
+        if (!passcode || passcode.trim() !== game.passcode) {
+          throw new ValidationError('Code PIN du salon privé incorrect !');
+        }
       }
 
       if (game.status !== 'WAITING_FOR_PLAYERS' && game.status !== 'CREATED') {

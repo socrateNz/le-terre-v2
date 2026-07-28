@@ -96,7 +96,7 @@ export function GameResultDialog({
                 <h2 className="text-2xl font-black text-white">🎉 VICTOIRE ÉCLATANTE !</h2>
                 <p className="text-xs font-mono text-emerald-300 mt-1">
                   Félicitations ! Vous remportez la totalité de la cagnotte de{' '}
-                  <strong className="text-[#F4B400] text-sm font-black">{totalPot} CR</strong> !
+                  <strong className="text-[#F4B400] text-sm font-black">{totalPot} FCFA</strong> !
                 </p>
               </div>
             </div>
@@ -112,7 +112,7 @@ export function GameResultDialog({
                 <h2 className="text-2xl font-black text-white">💔 DÉFAITE</h2>
                 <p className="text-xs font-mono text-rose-300 mt-1">
                   Victoire de <strong className="text-white">{winnerUsername || 'votre adversaire'}</strong>.{' '}
-                  Votre mise de {bet} CR a été engagée.
+                  Votre mise de {bet} FCFA a été engagée.
                 </p>
               </div>
             </div>
@@ -127,7 +127,7 @@ export function GameResultDialog({
               <div>
                 <h2 className="text-2xl font-black text-white">🤝 MATCH NUL !</h2>
                 <p className="text-xs font-mono text-purple-300 mt-1">
-                  Les scores sont égaux. Vos crédits de mise (<strong className="text-white">{bet} CR</strong>) ont été automatiquement restitués.
+                  Les scores sont égaux. Votre mise (<strong className="text-white">{bet} FCFA</strong>) a été automatiquement restituée.
                 </p>
               </div>
             </div>
@@ -142,7 +142,7 @@ export function GameResultDialog({
               <div>
                 <h2 className="text-xl font-extrabold text-white">🚫 PARTIE ANNULÉE</h2>
                 <p className="text-xs font-mono text-gray-300 mt-1">
-                  Les crédits engagés ({bet} CR) ont été remboursés aux participants.
+                  Les mises engagées ({bet} FCFA) ont été remboursées aux participants.
                 </p>
               </div>
             </div>
@@ -156,7 +156,7 @@ export function GameResultDialog({
                 ⚡ Votre adversaire demande une Revanche !
               </h3>
               <p className="text-[11px] font-mono text-yellow-200">
-                Mise requise : <strong className="text-white">{bet} CR</strong>
+                Mise requise : <strong className="text-white">{bet} FCFA</strong>
               </p>
             </div>
           )}
@@ -172,7 +172,7 @@ export function GameResultDialog({
                   className="py-3 px-4 rounded-xl gold-gradient text-[#0F1117] font-black text-xs uppercase shadow-lg flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  Accepter ({bet} CR)
+                  Accepter ({bet} FCFA)
                 </button>
                 <button
                   onClick={onDeclineRematch}
@@ -194,16 +194,15 @@ export function GameResultDialog({
                 className="w-full py-3.5 rounded-2xl gold-gradient text-[#0F1117] font-extrabold text-xs uppercase shadow-lg flex items-center justify-center gap-2 gold-glow disabled:opacity-50"
               >
                 <RotateCcw className={`w-4 h-4 ${isRematchLoading ? 'animate-spin' : ''}`} />
-                {isRematchLoading ? 'Envoi...' : `⚡ Proposer une Revanche (${bet} CR)`}
+                {isRematchLoading ? 'Envoi...' : `⚡ Proposer une Revanche (${bet} FCFA)`}
               </button>
             ) : null}
 
-            {/* Bouton Fermer */}
             <button
               onClick={onClose}
-              className="w-full py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-gray-300 font-bold text-xs uppercase tracking-wider transition-colors"
+              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-mono text-xs text-center border border-white/5 transition-colors"
             >
-              Voir l'Arène de Jeu
+              Fermer la fenêtre
             </button>
           </div>
         </motion.div>

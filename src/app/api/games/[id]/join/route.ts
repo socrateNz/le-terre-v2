@@ -10,7 +10,16 @@ export async function POST(
   try {
     const auth = getAuthUser(req);
     const { id } = await params;
-    const game = await GameService.joinGame(id, auth.userId);
+    
+    let passcode: string | undefined = undefined;
+    try {
+      const body = await req.json();
+      passcode = body?.passcode;
+    } catch {
+      // Body may be empty if no JSON provided
+    }
+
+    const game = await GameService.joinGame(id, auth.userId, passcode);
 
     return NextResponse.json({
       success: true,

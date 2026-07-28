@@ -1,8 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { UserRepository } from '@/repositories/UserRepository';
+import { GameRepository } from '@/repositories/GameRepository';
 import { updateProfileSchema } from '@/schemas/profile';
 import { AppError } from '@/lib/errors';
+
+export async function GET(req: NextRequest) {
+  try {
+    const auth = getAuthUser(req);
+    const userGames = await GameRepository.findUserGames(auth.userId);
+
+    const totalGames = userGames.length;
+    const finishedGames = userGames.filter((g) => g.status === 'FINISHED');
+    const wins = finishedGames.filter(
+      (g) => (g.winner?._id || g.winner)?.toString() === auth.userId
+    ).length;
+    const losses = finishedGames.filter(
+      (g) => g.winner && (g.winner?._id || g.winner)?.toString() !== auth.userId
+    ).length;
+    const ties = finishedGames.filter((g) => !g.winner).length;
+    const winRate = finishedGames.length > 0 ? Math.round((wins / finishedGames.length) * 100) : 0;
+
+    let netProfit = 0;
+    finishedGames.forEach((g) => {
+      const isWinner = (g.winner?._id || g.winner)?.toString() === auth.userId;
+      if (isWinner) {
+        netProfit += g.totalPot - g.bet;
+      } else if (g.winner) {
+        netProfit -= g.bet;
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        stats: {
+          totalGames,
+          finishedGamesCount: finishedGames.length,
+          wins,
+          losses,
+          ties,
+          winRate,
+          netProfit,
+        },
+        history: userGames,
+      },
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: 'Erreur chargement de l\'historique profil.' }, { status: 400 });
+  }
+}
 
 export async function PUT(req: NextRequest) {
   try {
@@ -21,6 +68,6 @@ export async function PUT(req: NextRequest) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur profil.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: error.message || 'Erreur mise à jour profil.' }, { status: 400 });
   }
 }

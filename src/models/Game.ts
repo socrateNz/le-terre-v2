@@ -15,6 +15,8 @@ export interface IGameDocument extends Document {
   maxPlayers: number;
   bet: number;
   status: GameStatus;
+  isPrivate?: boolean;
+  passcode?: string;
   players: IGamePlayerDocument[];
   winner?: mongoose.Types.ObjectId;
   rematchRequestedBy?: mongoose.Types.ObjectId;
@@ -42,7 +44,16 @@ const GameSchema = new Schema<IGameDocument>(
     bet: {
       type: Number,
       required: true,
-      min: [10, 'La mise minimale est de 10 crédits'],
+      min: [50, 'La mise minimale est de 50 FCFA'],
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    passcode: {
+      type: String,
+      select: false,
     },
     status: {
       type: String,

@@ -11,12 +11,12 @@ export default function WalletPage() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
-  const [depositAmount, setDepositAmount] = useState(500);
+  const [depositAmount, setDepositAmount] = useState(1000);
   const [paymentMethod, setPaymentMethod] = useState<'MOBILE_MONEY' | 'CARD' | 'TEST_CREDIT'>('MOBILE_MONEY');
   const [phone, setPhone] = useState('');
   const [isDepositLoading, setIsDepositLoading] = useState(false);
 
-  const [withdrawAmount, setWithdrawAmount] = useState(100);
+  const [withdrawAmount, setWithdrawAmount] = useState(500);
   const [withdrawPhone, setWithdrawPhone] = useState('');
   const [isWithdrawLoading, setIsWithdrawLoading] = useState(false);
 
@@ -49,8 +49,8 @@ export default function WalletPage() {
 
       if (data.success) {
         if (paymentMethod === 'TEST_CREDIT') {
-          toast.success('+100 crédits de démonstration ajoutés !');
-          setBalance(balance + 100);
+          toast.success('+500 FCFA de démonstration ajoutés !');
+          setBalance(balance + 500);
           refetch();
           setShowDepositModal(false);
         } else if (data.data.redirectUrl) {
@@ -104,7 +104,7 @@ export default function WalletPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto pb-16">
       {/* Wallet Balance Card Stitch */}
       <div className="glass-card p-6 rounded-3xl border border-purple-500/30 bg-gradient-to-br from-[#1A1D26] via-[#1F1938] to-[#1A1D26] relative overflow-hidden shadow-xl">
         <div className="absolute top-0 right-0 w-44 h-44 bg-[#6C3BFF]/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -119,11 +119,11 @@ export default function WalletPage() {
         </div>
 
         <h2 className="text-4xl font-mono font-black text-white my-2">
-          {balance.toLocaleString()} <span className="text-base font-normal text-gray-400">CR</span>
+          {balance.toLocaleString()} <span className="text-base font-normal text-gray-400">FCFA</span>
         </h2>
 
         <p className="text-xs text-gray-400 font-mono mb-6">
-          Équivalent estimé : {(balance * 10).toLocaleString()} XAF / FCFA
+          Taux de conversion : 1 FCFA = 1 FCFA (Direct local)
         </p>
 
         {/* Action Buttons */}
@@ -204,10 +204,10 @@ export default function WalletPage() {
                         isCredit ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
-                      {isCredit ? '+' : '-'}{item.amount} CR
+                      {isCredit ? '+' : '-'}{item.amount} FCFA
                     </span>
                     <span className="text-[10px] text-gray-500 block">
-                      Solde : {item.balanceAfter} CR
+                      Solde : {item.balanceAfter} FCFA
                     </span>
                   </div>
                 </div>
@@ -222,15 +222,15 @@ export default function WalletPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-3xl w-full max-w-md border border-purple-500/30 space-y-4 animate-scale-up">
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-[#F4B400]" /> Approvisionner le Wallet
+              <Plus className="w-5 h-5 text-[#F4B400]" /> Recharger en FCFA
             </h3>
 
             <form onSubmit={handleDepositSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-mono text-gray-400">Montant (Crédits)</label>
+                <label className="text-xs font-mono text-gray-400">Montant (FCFA)</label>
                 <input
                   type="number"
-                  min={10}
+                  min={50}
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(Number(e.target.value))}
                   className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-lg font-mono font-bold text-[#F4B400] text-center mt-1 focus:outline-none focus:border-[#6C3BFF]"
@@ -321,12 +321,12 @@ export default function WalletPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-3xl w-full max-w-md border border-purple-500/30 space-y-4 animate-scale-up">
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <ArrowUpRight className="w-5 h-5 text-[#F4B400]" /> Demande de Retrait
+              <ArrowUpRight className="w-5 h-5 text-[#F4B400]" /> Demande de Retrait (FCFA)
             </h3>
 
             <form onSubmit={handleWithdrawSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-mono text-gray-400">Montant à retirer (Crédits)</label>
+                <label className="text-xs font-mono text-gray-400">Montant à retirer (FCFA)</label>
                 <input
                   type="number"
                   min={50}

@@ -374,7 +374,7 @@ export default function GameDetailsPage({
         <div className="bg-[#1A1D26] border border-yellow-500/40 px-2.5 py-1 rounded-xl flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 shadow">
           <Trophy className="w-3.5 h-3.5 text-[#F4B400] flex-shrink-0" />
           <div className="flex items-baseline gap-1 font-mono">
-            <span className="text-xs font-black text-[#F4B400]">{game.totalPot} CR</span>
+            <span className="text-xs font-black text-[#F4B400]">{game.totalPot} FCFA</span>
             <span className="text-[9px] text-gray-400 font-normal">({game.bet}/j)</span>
           </div>
         </div>
@@ -395,7 +395,7 @@ export default function GameDetailsPage({
           <AnimatedBalanceCounter
             value={balance}
             delta={balanceDelta}
-            suffix="CR"
+            suffix="FCFA"
             className="text-xs font-extrabold text-[#F4B400]"
           />
         </div>

@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { GameService } from '@/services/GameService';
+import { GameRepository } from '@/repositories/GameRepository';
 import { createGameSchema } from '@/schemas/game';
 import { AppError } from '@/lib/errors';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const games = await GameService.listGames();
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get('status') || undefined;
+    const minBet = searchParams.get('minBet') ? Number(searchParams.get('minBet')) : undefined;
+    const maxBet = searchParams.get('maxBet') ? Number(searchParams.get('maxBet')) : undefined;
+    const isPrivate = searchParams.get('isPrivate') !== null ? searchParams.get('isPrivate') === 'true' : undefined;
+    const search = searchParams.get('search') || undefined;
+
+    const games = await GameRepository.findAll({
+      status,
+      minBet,
+      maxBet,
+      isPrivate,
+      search,
+    });
+
     return NextResponse.json({
       success: true,
       data: games,
@@ -26,6 +41,8 @@ export async function POST(req: NextRequest) {
       userId: auth.userId,
       bet: validated.bet,
       maxPlayers: validated.maxPlayers,
+      isPrivate: validated.isPrivate,
+      passcode: validated.passcode,
     });
 
     return NextResponse.json({

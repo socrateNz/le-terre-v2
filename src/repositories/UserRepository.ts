@@ -22,6 +22,19 @@ export class UserRepository {
     return User.findOne({ username }).exec();
   }
 
+  public static async findAll(search?: string): Promise<IUserDocument[]> {
+    await connectDB();
+    const filter: any = {};
+    if (search && search.trim()) {
+      const s = search.trim();
+      filter.$or = [
+        { username: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
+      ];
+    }
+    return User.find(filter).select('-password').sort({ createdAt: -1 }).exec();
+  }
+
   public static async create(userData: Partial<IUserDocument>, session?: mongoose.ClientSession): Promise<IUserDocument> {
     await connectDB();
     const user = new User(userData);
