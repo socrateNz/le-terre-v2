@@ -5,9 +5,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 interface UseShakeDetectorOptions {
   onShake: () => void;
   enabled?: boolean;
-  threshold?: number; // Seuil de sensibilité (10-14 est très réactif)
+  threshold?: number; // Seuil de sensibilité (10-14 est réactif)
   timeout?: number;   // Temps min entre 2 détections (ms)
 }
+
+const PERMISSION_STORAGE_KEY = 'arena_motion_permission_granted';
 
 export function useShakeDetector({
   onShake,
@@ -16,12 +18,14 @@ export function useShakeDetector({
   timeout = 900,
 }: UseShakeDetectorOptions) {
   const lastShakeTime = useRef<number>(0);
+  const hasAutoRequested = useRef<boolean>(false);
+
   const [isSupported, setIsSupported] = useState<boolean>(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean>(false);
   const [needsPermission, setNeedsPermission] = useState<boolean>(false);
   const [lastMagnitude, setLastMagnitude] = useState<number>(0);
 
-  // Demande d'autorisation pour iOS 13+
+  // Demande d'autorisation pour iOS 13+ enregistrée de façon permanente dans localStorage
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (
       typeof window !== 'undefined' &&
@@ -33,6 +37,11 @@ export function useShakeDetector({
         if (response === 'granted') {
           setPermissionGranted(true);
           setNeedsPermission(false);
+          try {
+            localStorage.setItem(PERMISSION_STORAGE_KEY, 'true');
+          } catch {
+            // ignore localStorage quota errors
+          }
           return true;
         }
       } catch (err) {
@@ -40,8 +49,14 @@ export function useShakeDetector({
       }
       return false;
     }
+
     setPermissionGranted(true);
     setNeedsPermission(false);
+    try {
+      localStorage.setItem(PERMISSION_STORAGE_KEY, 'true');
+    } catch {
+      // ignore
+    }
     return true;
   }, []);
 
@@ -50,6 +65,14 @@ export function useShakeDetector({
 
     const hasMotion = 'DeviceMotionEvent' in window;
     setIsSupported(hasMotion);
+
+    // Vérifie si la permission avait déjà été accordée auparavant
+    const savedPermission = localStorage.getItem(PERMISSION_STORAGE_KEY);
+    if (savedPermission === 'true') {
+      setPermissionGranted(true);
+      setNeedsPermission(false);
+      return;
+    }
 
     if (hasMotion) {
       if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
@@ -60,6 +83,36 @@ export function useShakeDetector({
     }
   }, []);
 
+  // Déclencheur AUTOMATIQUE AU PREMIER TAP / CLIC SUR LA PAGE
+  // Demande la permission automatiquement une seule fois dès que l'utilisateur touche la page/l'arène
+  useEffect(() => {
+    if (
+      !needsPermission ||
+      permissionGranted ||
+      hasAutoRequested.current ||
+      typeof window === 'undefined'
+    ) {
+      return;
+    }
+
+    const handleFirstUserGesture = async () => {
+      if (hasAutoRequested.current) return;
+      hasAutoRequested.current = true;
+      await requestPermission();
+      window.removeEventListener('click', handleFirstUserGesture, true);
+      window.removeEventListener('touchstart', handleFirstUserGesture, true);
+    };
+
+    window.addEventListener('click', handleFirstUserGesture, { capture: true, once: true });
+    window.addEventListener('touchstart', handleFirstUserGesture, { capture: true, once: true });
+
+    return () => {
+      window.removeEventListener('click', handleFirstUserGesture, true);
+      window.removeEventListener('touchstart', handleFirstUserGesture, true);
+    };
+  }, [needsPermission, permissionGranted, requestPermission]);
+
+  // Écoute des mouvements de l'appareil
   useEffect(() => {
     if (!enabled || !isSupported || typeof window === 'undefined') return;
     if (needsPermission && !permissionGranted) return;
@@ -69,7 +122,6 @@ export function useShakeDetector({
     let lastZ: number | null = null;
 
     const handleMotion = (event: DeviceMotionEvent) => {
-      // Priorité à acceleration (sans gravité) puis fallback sur accelerationIncludingGravity
       const acc = event.acceleration || event.accelerationIncludingGravity;
       if (!acc) return;
 
@@ -77,7 +129,6 @@ export function useShakeDetector({
       const y = acc.y ?? 0;
       const z = acc.z ?? 0;
 
-      // Calcul de la magnitude de l'accélération
       const magnitude = Math.sqrt(x * x + y * y + z * z);
       setLastMagnitude(Math.round(magnitude));
 
@@ -87,13 +138,11 @@ export function useShakeDetector({
         const deltaZ = Math.abs(z - lastZ);
         const totalDelta = deltaX + deltaY + deltaZ;
 
-        // Détection soit par delta d'accélération (variations brusques), soit par magnitude élevée (> threshold)
         if (totalDelta > threshold || magnitude > threshold) {
           const now = Date.now();
           if (now - lastShakeTime.current > timeout) {
             lastShakeTime.current = now;
 
-            // Feedback Haptique (Vibration sur téléphone)
             if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
               try {
                 navigator.vibrate([60, 80, 60]);
