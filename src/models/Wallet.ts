@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IWalletDocument extends Document {
   user: mongoose.Types.ObjectId;
-  balance: number;
+  balance: number; // Solde Réel (FCFA) retirable
   updatedAt: Date;
 }
 
@@ -18,7 +18,7 @@ const WalletSchema = new Schema<IWalletDocument>(
     balance: {
       type: Number,
       required: true,
-      default: 100,
+      default: 0,
       min: [0, 'Le solde ne peut pas être négatif'],
     },
   },

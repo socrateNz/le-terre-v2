@@ -46,23 +46,9 @@ export class AuthService {
         session
       );
 
-      const wallet = await WalletRepository.createWallet(
+      await WalletRepository.createWallet(
         newUser._id.toString(),
-        WALLET_CONFIG.WELCOME_CREDITS,
-        session
-      );
-
-      await LedgerRepository.createEntry(
-        {
-          wallet: wallet._id,
-          user: newUser._id,
-          type: 'CREDIT',
-          amount: WALLET_CONFIG.WELCOME_CREDITS,
-          balanceBefore: 0,
-          balanceAfter: WALLET_CONFIG.WELCOME_CREDITS,
-          reference: `WELCOME-${Date.now()}`,
-          reason: 'TEST_CREDIT',
-        },
+        0,
         session
       );
 

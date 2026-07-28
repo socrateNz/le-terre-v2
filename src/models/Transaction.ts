@@ -7,6 +7,7 @@ export interface ITransactionDocument extends Document {
   provider: 'NOTCHPAY' | 'STRIPE' | 'TEST_CREDIT';
   paymentMethod: 'MOBILE_MONEY' | 'CARD' | 'TEST_CREDIT';
   paymentReference: string;
+  providerReference?: string;
   status: 'pending' | 'completed' | 'failed';
   reason: string;
   createdAt: Date;
@@ -43,6 +44,9 @@ const TransactionSchema = new Schema<ITransactionDocument>(
       type: String,
       required: true,
       index: true,
+    },
+    providerReference: {
+      type: String,
     },
     status: {
       type: String,

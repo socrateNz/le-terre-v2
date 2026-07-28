@@ -17,7 +17,7 @@ export class WalletRepository {
 
   public static async createWallet(
     userId: string,
-    initialBalance = 100,
+    initialBalance = 0,
     session?: mongoose.ClientSession
   ): Promise<IWalletDocument> {
     await connectDB();
@@ -39,7 +39,6 @@ export class WalletRepository {
     await connectDB();
     const opts = session ? { session, returnDocument: 'after' as const } : { returnDocument: 'after' as const };
 
-    // Si on déduit de l'argent, s'assurer que balance >= amountDelta
     const filter: any = { user: userId };
     if (amountDelta < 0) {
       filter.balance = { $gte: Math.abs(amountDelta) };

@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       paymentMethod: validated.paymentMethod,
       phone: validated.phone,
       country: validated.country || 'CM',
+      cardToken: validated.cardToken,
       email: auth.email,
       baseUrl: origin,
     });

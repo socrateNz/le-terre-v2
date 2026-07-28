@@ -19,7 +19,7 @@ export class GameService {
     const { userId, bet, maxPlayers = 2, isPrivate = false, passcode } = input;
 
     if (bet < GAME_CONFIG.MIN_BET || bet > GAME_CONFIG.MAX_BET) {
-      throw new ValidationError(`La mise doit être comprise entre ${GAME_CONFIG.MIN_BET} et ${GAME_CONFIG.MAX_BET} crédits.`);
+      throw new ValidationError(`La mise doit être comprise entre ${GAME_CONFIG.MIN_BET} et ${GAME_CONFIG.MAX_BET} FCFA.`);
     }
 
     if (maxPlayers < GAME_CONFIG.MIN_PLAYERS || maxPlayers > GAME_CONFIG.MAX_PLAYERS) {
@@ -31,10 +31,10 @@ export class GameService {
     }
 
     return runTransaction(async (session) => {
-      // 1. Vérification et déduction atomique de la mise du créateur
+      // 1. Vérification et déduction atomique de la mise du créateur (Solde Réel FCFA)
       const wallet = await WalletRepository.findByUserId(userId, session);
       if (!wallet || wallet.balance < bet) {
-        throw new ValidationError('Solde insuffisant pour créer cette partie.');
+        throw new ValidationError('Solde réel insuffisant pour créer cette partie. Veuillez recharger votre portefeuille.');
       }
 
       const balanceBefore = wallet.balance;
@@ -43,7 +43,7 @@ export class GameService {
         throw new ValidationError('Impossible de déduire la mise.');
       }
 
-      // 2. Création du document Game avec le premier joueur
+      // 2. Création de la partie
       const game = await GameRepository.createGame(
         {
           creator: userId as any,
@@ -66,7 +66,6 @@ export class GameService {
         session
       );
 
-      // 3. Enregistrement dans le journal comptable Ledger
       await LedgerRepository.createEntry(
         {
           wallet: updatedWallet._id,
@@ -118,7 +117,7 @@ export class GameService {
       // Déduction atomique de la mise du joueur qui rejoint
       const wallet = await WalletRepository.findByUserId(userId, session);
       if (!wallet || wallet.balance < game.bet) {
-        throw new ValidationError('Solde insuffisant pour rejoindre cette partie.');
+        throw new ValidationError('Solde réel insuffisant pour rejoindre cette partie.');
       }
 
       const balanceBefore = wallet.balance;
@@ -176,14 +175,12 @@ export class GameService {
       game.status = 'ROLLING_DICE';
       await game.save({ session });
 
-      // Exécution du moteur de jeu GameEngine
       const executionPlayers = game.players.map((p) => ({
         userId: (p.user._id || p.user).toString(),
       }));
 
       const result = GameEngine.playDiceGame(game.bet, executionPlayers);
 
-      // Mise à jour des scores des dés sur les joueurs
       for (const playerDoc of game.players) {
         const pId = (playerDoc.user._id || playerDoc.user).toString();
         const score = result.playerScores.find((s) => s.userId === pId);
@@ -225,7 +222,7 @@ export class GameService {
           }
         }
       } else {
-        // En cas d'Égalité (Match Nul) : Restitution des mises à chaque participant
+        // Restitution en cas d'Égalité
         game.winner = undefined;
         for (const p of game.players) {
           const pId = (p.user._id || p.user).toString();
@@ -233,6 +230,7 @@ export class GameService {
           if (w) {
             const balanceBefore = w.balance;
             const updatedW = await WalletRepository.updateBalance(pId, game.bet, session);
+
             if (updatedW) {
               await LedgerRepository.createEntry(
                 {
@@ -285,7 +283,6 @@ export class GameService {
         throw new ValidationError('Vous avez déjà lancé vos dés pour cette partie.');
       }
 
-      // Lancer de 2 dés certifiés (1 à 6)
       const diceOne = Math.floor(Math.random() * 6) + 1;
       const diceTwo = Math.floor(Math.random() * 6) + 1;
       const total = diceOne + diceTwo;
@@ -295,7 +292,6 @@ export class GameService {
       playerDoc.total = total;
       game.status = 'ROLLING_DICE';
 
-      // Vérifier si tous les joueurs ont lancé leurs dés
       const allPlayersRolled = game.players.every((p) => p.total > 0 || p.diceOne > 0);
 
       if (allPlayersRolled) {
@@ -312,7 +308,6 @@ export class GameService {
           }
         }
 
-        // Gestion de l'Égalité (Match Nul)
         if (winners.length > 1) {
           game.winner = undefined;
           game.status = 'FINISHED';
@@ -323,6 +318,7 @@ export class GameService {
             if (w) {
               const balanceBefore = w.balance;
               const updatedW = await WalletRepository.updateBalance(pId, game.bet, session);
+
               if (updatedW) {
                 await LedgerRepository.createEntry(
                   {
@@ -342,7 +338,6 @@ export class GameService {
             }
           }
         } else {
-          // Un seul vainqueur
           const winnerUserId = winners[0];
           game.winner = winnerUserId as any;
           game.status = 'FINISHED';
@@ -350,11 +345,7 @@ export class GameService {
           const winnerWallet = await WalletRepository.findByUserId(winnerUserId, session);
           if (winnerWallet) {
             const balanceBefore = winnerWallet.balance;
-            const updatedWinnerWallet = await WalletRepository.updateBalance(
-              winnerUserId,
-              game.totalPot,
-              session
-            );
+            const updatedWinnerWallet = await WalletRepository.updateBalance(winnerUserId, game.totalPot, session);
 
             if (updatedWinnerWallet) {
               await LedgerRepository.createEntry(
@@ -381,175 +372,32 @@ export class GameService {
     });
   }
 
-  public static async proposeRematch(gameId: string, userId: string) {
+  public static async cancelGame(gameId: string, userId: string, isAdmin: boolean = false) {
     return runTransaction(async (session) => {
       const game = await GameRepository.findById(gameId, session);
-      if (!game) throw new NotFoundError('Partie non trouvée.');
-
-      if (game.status !== 'FINISHED') {
-        throw new ValidationError('La partie doit être terminée pour proposer une revanche.');
+      if (!game) {
+        throw new NotFoundError('Partie non trouvée.');
       }
 
-      const isPlayerInGame = game.players.some(
-        (p) => (p.user._id || p.user).toString() === userId
-      );
-      if (!isPlayerInGame) {
-        throw new ValidationError('Vous ne participez pas à cette partie.');
+      if (!isAdmin && game.creator.toString() !== userId) {
+        throw new UnauthorizedError('Seul le créateur ou un administrateur peut annuler la partie.');
       }
 
-      const wallet = await WalletRepository.findByUserId(userId, session);
-      if (!wallet || wallet.balance < game.bet) {
-        throw new ValidationError('Solde insuffisant pour proposer une revanche.');
+      if (game.status === 'FINISHED' || game.status === 'CANCELLED') {
+        throw new ValidationError('Cette partie ne peut plus être annulée.');
       }
 
-      game.rematchRequestedBy = userId as any;
-      await game.save({ session });
-      return game;
-    });
-  }
-
-  public static async acceptRematch(gameId: string, userId: string) {
-    return runTransaction(async (session) => {
-      const game = await GameRepository.findById(gameId, session);
-      if (!game) throw new NotFoundError('Partie non trouvée.');
-
-      if (!game.rematchRequestedBy) {
-        throw new ValidationError('Aucune demande de revanche active.');
-      }
-
-      const requesterId = game.rematchRequestedBy.toString();
-      if (requesterId === userId) {
-        throw new ValidationError('Vous ne pouvez pas accepter votre propre demande.');
-      }
-
-      const isPlayerInGame = game.players.some(
-        (p) => (p.user._id || p.user).toString() === userId
-      );
-      if (!isPlayerInGame) {
-        throw new ValidationError('Vous ne participez pas à cette partie.');
-      }
-
-      const requesterWallet = await WalletRepository.findByUserId(requesterId, session);
-      const acceptorWallet = await WalletRepository.findByUserId(userId, session);
-
-      if (!requesterWallet || requesterWallet.balance < game.bet) {
-        throw new ValidationError('Le solde du joueur demandeur est insuffisant.');
-      }
-
-      if (!acceptorWallet || acceptorWallet.balance < game.bet) {
-        throw new ValidationError('Solde insuffisant pour accepter la revanche.');
-      }
-
-      const reqBalanceBefore = requesterWallet.balance;
-      const updatedReqWallet = await WalletRepository.updateBalance(requesterId, -game.bet, session);
-
-      const accBalanceBefore = acceptorWallet.balance;
-      const updatedAccWallet = await WalletRepository.updateBalance(userId, -game.bet, session);
-
-      if (!updatedReqWallet || !updatedAccWallet) {
-        throw new ValidationError('Erreur lors du débit des mises.');
-      }
-
-      const newGame = await GameRepository.createGame(
-        {
-          creator: requesterId as any,
-          maxPlayers: game.maxPlayers,
-          bet: game.bet,
-          status: 'WAITING_FOR_PLAYERS',
-          players: [
-            {
-              user: requesterId as any,
-              diceOne: 0,
-              diceTwo: 0,
-              total: 0,
-              joinedAt: new Date(),
-            } as any,
-            {
-              user: userId as any,
-              diceOne: 0,
-              diceTwo: 0,
-              total: 0,
-              joinedAt: new Date(),
-            } as any,
-          ],
-          totalPot: game.bet * 2,
-        },
-        session
-      );
-
-      await LedgerRepository.createEntry(
-        {
-          wallet: updatedReqWallet._id,
-          user: requesterId as any,
-          type: 'DEBIT',
-          amount: game.bet,
-          balanceBefore: reqBalanceBefore,
-          balanceAfter: updatedReqWallet.balance,
-          reference: `BET-${newGame._id}`,
-          reason: 'GAME_BET',
-          game: newGame._id,
-        },
-        session
-      );
-
-      await LedgerRepository.createEntry(
-        {
-          wallet: updatedAccWallet._id,
-          user: userId as any,
-          type: 'DEBIT',
-          amount: game.bet,
-          balanceBefore: accBalanceBefore,
-          balanceAfter: updatedAccWallet.balance,
-          reference: `BET-${newGame._id}`,
-          reason: 'GAME_BET',
-          game: newGame._id,
-        },
-        session
-      );
-
-      game.nextGameId = newGame._id;
+      game.status = 'CANCELLED';
       await game.save({ session });
 
-      return newGame;
-    });
-  }
-
-  public static async declineRematch(gameId: string, userId: string) {
-    return runTransaction(async (session) => {
-      const game = await GameRepository.findById(gameId, session);
-      if (!game) throw new NotFoundError('Partie non trouvée.');
-
-      game.rematchRequestedBy = undefined;
-      await game.save({ session });
-      return game;
-    });
-  }
-
-  public static async cancelGame(gameId: string, userId: string, isAdmin = false) {
-    return runTransaction(async (session) => {
-      const game = await GameRepository.findById(gameId, session);
-      if (!game) throw new NotFoundError('Partie non trouvée.');
-
-      if (game.status === 'FINISHED') {
-        throw new ValidationError('Impossible d’annuler une partie déjà terminée.');
-      }
-
-      if (game.status === 'CANCELLED') {
-        throw new ValidationError('Cette partie a déjà été annulée.');
-      }
-
-      const creatorId = (game.creator._id || game.creator).toString();
-      if (creatorId !== userId && !isAdmin) {
-        throw new UnauthorizedError('Seul le créateur de la partie (ou un administrateur) peut l’annuler.');
-      }
-
-      // Restitution automatique des mises à tous les joueurs inscrits
+      // Remboursement de tous les joueurs inscrits
       for (const p of game.players) {
         const pId = (p.user._id || p.user).toString();
         const w = await WalletRepository.findByUserId(pId, session);
         if (w) {
           const balanceBefore = w.balance;
           const updatedW = await WalletRepository.updateBalance(pId, game.bet, session);
+
           if (updatedW) {
             await LedgerRepository.createEntry(
               {
@@ -569,21 +417,55 @@ export class GameService {
         }
       }
 
-      game.status = 'CANCELLED';
+      return game;
+    });
+  }
+
+  public static async proposeRematch(gameId: string, userId: string) {
+    return runTransaction(async (session) => {
+      const game = await GameRepository.findById(gameId, session);
+      if (!game) {
+        throw new NotFoundError('Partie introuvable.');
+      }
+      game.rematchRequestedBy = userId as any;
       await game.save({ session });
       return game;
     });
   }
 
-  public static async listGames() {
-    return GameRepository.findAllActive();
+  public static async acceptRematch(gameId: string, userId: string) {
+    return runTransaction(async (session) => {
+      const oldGame = await GameRepository.findById(gameId, session);
+      if (!oldGame) {
+        throw new NotFoundError('Partie introuvable.');
+      }
+
+      const newGame = await this.createGame({
+        userId,
+        bet: oldGame.bet,
+        maxPlayers: oldGame.maxPlayers,
+        isPrivate: oldGame.isPrivate,
+      });
+
+      oldGame.nextGameId = newGame._id;
+      await oldGame.save({ session });
+      return newGame;
+    });
   }
 
   public static async getGameDetails(gameId: string) {
     return GameRepository.findById(gameId);
   }
 
-  public static async getUserGames(userId: string) {
-    return GameRepository.findUserGames(userId);
+  public static async declineRematch(gameId: string, userId: string) {
+    return runTransaction(async (session) => {
+      const game = await GameRepository.findById(gameId, session);
+      if (!game) {
+        throw new NotFoundError('Partie introuvable.');
+      }
+      game.rematchRequestedBy = undefined;
+      await game.save({ session });
+      return game;
+    });
   }
 }
