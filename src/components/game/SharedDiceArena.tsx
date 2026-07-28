@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Realistic3DDice } from './Realistic3DDice';
-import { Sparkles, Dices, Play, Smartphone } from 'lucide-react';
+import { Sparkles, Dices, Play, Smartphone, CheckCircle } from 'lucide-react';
 import { useShakeDetector } from '@/hooks/useShakeDetector';
 
 interface SharedDiceArenaProps {
@@ -30,20 +30,31 @@ export function SharedDiceArena({
     diceOne > 0 && diceTwo > 0 ? diceOne + diceTwo : totalScore || 0;
 
   // Intégration de la détection de secousse (Shake to Roll)
-  const { isSupported, needsPermission, requestPermission } = useShakeDetector({
+  const {
+    isSupported,
+    needsPermission,
+    permissionGranted,
+    requestPermission,
+    lastMagnitude,
+  } = useShakeDetector({
     onShake: () => {
       if (canRoll && !isRolling) {
         onRoll();
       }
     },
     enabled: canRoll && !isRolling,
+    threshold: 11,
   });
 
   const handleRollClick = async () => {
-    if (needsPermission) {
+    if (needsPermission && !permissionGranted) {
       await requestPermission();
     }
     onRoll();
+  };
+
+  const handleGrantPermissionClick = async () => {
+    await requestPermission();
   };
 
   return (
@@ -91,10 +102,15 @@ export function SharedDiceArena({
       </div>
 
       {/* Zone centrale : Les 2 Dés 3D Partagés Réels sur la table Jaune */}
-      <div className="relative z-10 py-6 my-2 w-full flex items-center justify-center gap-8 md:gap-14">
-        {/* Dé 1 */}
+      <div className="relative z-10 py-10 my-2 w-full flex items-center justify-center gap-10 md:gap-16 min-h-[180px]">
+        {/* Dé 1 (Déplacement depuis la gauche de l'arène) */}
         <div className="transform -rotate-6 transition-transform hover:scale-105">
-          <Realistic3DDice value={diceOne || 1} isRolling={isRolling} size={76} />
+          <Realistic3DDice
+            value={diceOne || 1}
+            isRolling={isRolling}
+            size={76}
+            rollSide="left"
+          />
         </div>
 
         {/* Séparateur / Plus */}
@@ -102,9 +118,14 @@ export function SharedDiceArena({
           <span>+</span>
         </div>
 
-        {/* Dé 2 */}
+        {/* Dé 2 (Déplacement depuis la droite de l'arène) */}
         <div className="transform rotate-6 transition-transform hover:scale-105">
-          <Realistic3DDice value={diceTwo || 1} isRolling={isRolling} size={76} />
+          <Realistic3DDice
+            value={diceTwo || 1}
+            isRolling={isRolling}
+            size={76}
+            rollSide="right"
+          />
         </div>
       </div>
 
@@ -132,16 +153,35 @@ export function SharedDiceArena({
               )}
             </motion.button>
 
-            {/* Indication Secouer Téléphone (Mobile Shake to Roll) */}
+            {/* Support Mobile Shake Info / Permission Button */}
             {isSupported && !isRolling && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center justify-center gap-1.5 text-[11px] font-mono font-extrabold text-black/80 bg-black/10 backdrop-blur-md py-1.5 px-3 rounded-xl text-center border border-black/10"
-              >
-                <Smartphone className="w-4 h-4 animate-bounce text-black" />
-                <span>📱 Astuce : Secouez votre téléphone pour lancer !</span>
-              </motion.div>
+              <div className="space-y-1.5">
+                {needsPermission && !permissionGranted ? (
+                  <button
+                    onClick={handleGrantPermissionClick}
+                    className="w-full py-2 px-3 rounded-xl bg-black/80 hover:bg-black text-[#FFE543] text-xs font-mono font-extrabold flex items-center justify-center gap-2 border border-black/20 shadow-md transition-all"
+                  >
+                    <Smartphone className="w-4 h-4 animate-bounce" />
+                    <span>Activer les capteurs pour secouer le téléphone 📱</span>
+                  </button>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-between gap-1.5 text-[11px] font-mono font-extrabold text-black/80 bg-black/10 backdrop-blur-md py-2 px-3 rounded-xl border border-black/10"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 animate-bounce text-black" />
+                      📱 Secouez vivement votre téléphone pour lancer les dés !
+                    </span>
+                    {lastMagnitude > 0 && (
+                      <span className="text-[9px] bg-black/20 px-1.5 py-0.5 rounded text-black/70">
+                        Intensité: {lastMagnitude}
+                      </span>
+                    )}
+                  </motion.div>
+                )}
+              </div>
             )}
           </>
         ) : isRolling ? (

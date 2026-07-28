@@ -6,7 +6,8 @@ import { motion } from 'framer-motion';
 interface Realistic3DDiceProps {
   value: number;
   isRolling: boolean;
-  size?: number; // en px (ex: 64, 80)
+  size?: number; // en px (ex: 72, 80)
+  rollSide?: 'left' | 'right';
 }
 
 // Emplacements des points pour chaque valeur de 1 à 6
@@ -44,11 +45,8 @@ const PIP_CONFIGS: Record<number, Array<{ top: string; left: string }>> = {
   ],
 };
 
-// Configuration des 6 faces du dé
-// Face 1 (Front), Face 2 (Back), Face 3 (Right), Face 4 (Left), Face 5 (Top), Face 6 (Bottom)
 const FACE_VALUES = [1, 2, 3, 4, 5, 6];
 
-// Angles de rotation finaux pour exposer la valeur au regard du joueur
 const TARGET_ROTATIONS: Record<number, { rx: number; ry: number }> = {
   1: { rx: 0, ry: 0 },
   2: { rx: 0, ry: 180 },
@@ -61,11 +59,11 @@ const TARGET_ROTATIONS: Record<number, { rx: number; ry: number }> = {
 export function Realistic3DDice({
   value,
   isRolling,
-  size = 72,
+  size = 76,
+  rollSide = 'left',
 }: Realistic3DDiceProps) {
   const halfSize = size / 2;
 
-  // Calcul du style de transformation pour chaque face en fonction du rayon du cube
   const faceTransformStyles = useMemo(() => {
     return {
       1: `translateZ(${halfSize}px)`,
@@ -79,6 +77,14 @@ export function Realistic3DDice({
 
   const targetRotation = TARGET_ROTATIONS[value] || TARGET_ROTATIONS[1];
 
+  // Déplacement et rebondissements physique à travers l'arène jaune
+  const travelX =
+    rollSide === 'left'
+      ? [-140, -40, -90, -20, -50, 0]
+      : [140, 40, 90, 20, 50, 0];
+
+  const travelY = [-75, 0, -45, 0, -20, 0];
+
   return (
     <div className="flex flex-col items-center justify-center relative select-none">
       {/* Conteneur 3D avec Perspective */}
@@ -90,23 +96,25 @@ export function Realistic3DDice({
           perspective: '1000px',
         }}
       >
-        {/* Ombre portée réaliste au sol de l'arène jaune */}
+        {/* Ombre portée réaliste au sol qui se déplace en phase avec le dé */}
         <motion.div
           animate={
             isRolling
               ? {
-                  scale: [1, 0.6, 1.2, 0.8, 1],
-                  opacity: [0.6, 0.3, 0.7, 0.4, 0.6],
+                  x: travelX,
+                  scale: [0.4, 1.2, 0.6, 1.1, 0.8, 1],
+                  opacity: [0.2, 0.6, 0.3, 0.5, 0.4, 0.55],
                 }
               : {
+                  x: 0,
                   scale: value ? 1 : 0.9,
                   opacity: value ? 0.55 : 0.4,
                 }
           }
           transition={
             isRolling
-              ? { repeat: Infinity, duration: 0.4, ease: 'easeInOut' }
-              : { duration: 0.3 }
+              ? { repeat: Infinity, duration: 0.8, ease: 'easeOut' }
+              : { duration: 0.4 }
           }
           className="absolute rounded-full bg-black/40 blur-md pointer-events-none"
           style={{
@@ -116,27 +124,38 @@ export function Realistic3DDice({
           }}
         />
 
-        {/* Cube 3D Animé */}
+        {/* Cube 3D Animé qui culbute ET se déplace à travers la table */}
         <motion.div
           animate={
             isRolling
               ? {
-                  rotateX: [0, 360, 720, 1080],
-                  rotateY: [0, 540, 900, 1440],
-                  rotateZ: [0, 180, 360, 540],
-                  y: [0, -28, 0, -18, 0],
+                  x: travelX,
+                  y: travelY,
+                  rotateX:
+                    rollSide === 'left'
+                      ? [0, 360, 720, 1080, 1440]
+                      : [0, -360, -720, -1080, -1440],
+                  rotateY:
+                    rollSide === 'left'
+                      ? [0, 540, 900, 1260, 1620]
+                      : [0, -540, -900, -1260, -1620],
+                  rotateZ:
+                    rollSide === 'left'
+                      ? [-60, 30, -90, 45, 0]
+                      : [60, -30, 90, -45, 0],
                 }
               : {
+                  x: 0,
+                  y: 0,
                   rotateX: targetRotation.rx,
                   rotateY: targetRotation.ry,
                   rotateZ: 0,
-                  y: 0,
                 }
           }
           transition={
             isRolling
-              ? { repeat: Infinity, duration: 0.6, ease: 'linear' }
-              : { type: 'spring', stiffness: 220, damping: 18 }
+              ? { repeat: Infinity, duration: 0.8, ease: 'easeOut' }
+              : { type: 'spring', stiffness: 200, damping: 17 }
           }
           style={{
             width: `${size}px`,
@@ -162,12 +181,12 @@ export function Realistic3DDice({
                   background:
                     'linear-gradient(145deg, #ffffff 0%, #f4f4f6 50%, #e2e2e8 100%)',
                   boxShadow:
-                    'inset 0 0 6px rgba(0,0,0,0.12), inset 0 2px 4px rgba(255,255,255,0.9), 0 4px 10px rgba(0,0,0,0.2)',
-                  border: '1px solid rgba(210,210,220,0.8)',
+                    'inset 0 0 6px rgba(0,0,0,0.12), inset 0 2px 4px rgba(255,255,255,0.9), 0 4px 10px rgba(0,0,0,0.25)',
+                  border: '1px solid rgba(210,210,220,0.85)',
                 }}
                 className="absolute inset-0 p-1 flex items-center justify-center overflow-hidden"
               >
-                {/* Reflet brillant plastique supérieur */}
+                {/* Reflet brillant supérieur */}
                 <div
                   className="absolute inset-x-0 top-0 h-1/2 rounded-t-xl pointer-events-none opacity-40"
                   style={{
