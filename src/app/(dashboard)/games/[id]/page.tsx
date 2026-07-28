@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -23,8 +23,8 @@ import {
   Ban,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { DiceRoller } from '@/components/game/DiceRoller';
 import { SharedDiceArena } from '@/components/game/SharedDiceArena';
+import { GameResultDialog } from '@/components/game/GameResultDialog';
 import { AnimatedBalanceCounter } from '@/components/ui/AnimatedBalanceCounter';
 
 export default function GameDetailsPage({
@@ -37,10 +37,14 @@ export default function GameDetailsPage({
   const { user, balance, fetchCurrentUser } = useAuthStore();
   const [isJoining, setIsJoining] = useState(false);
   const [isRollingMyDice, setIsRollingMyDice] = useState(false);
+  const [isOpponentRolling, setIsOpponentRolling] = useState(false);
   const [isRematchLoading, setIsRematchLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [balanceDelta, setBalanceDelta] = useState<number | null>(null);
+  const [isResultDialogOpen, setIsResultDialogOpen] = useState(false);
+  const prevRollSignatureRef = useRef<string | null>(null);
 
+  // Polling rapide à 1000ms pendant les parties en cours pour réactivité instantanée
   const { data: game, isLoading, refetch } = useQuery({
     queryKey: ['game', gameId],
     queryFn: async () => {
@@ -50,9 +54,10 @@ export default function GameDetailsPage({
     },
     refetchInterval: (query) => {
       const gameData = query.state.data;
-      if (isRollingMyDice) return false;
-      // Continue de rafraîchir en arrière-plan pour détecter les demandes de revanche
-      return 2000;
+      if (gameData?.status === 'FINISHED' || gameData?.status === 'CANCELLED') {
+        return 3000;
+      }
+      return 1000; // Fast 1-second polling
     },
   });
 
@@ -65,6 +70,43 @@ export default function GameDetailsPage({
       router.push(`/games/${nextId}`);
     }
   }, [game?.nextGameId, router, fetchCurrentUser]);
+
+  // Détection en temps réel des lancers des adversaires pour déclencher l'animation 3D simultanée
+  const currentRollSignature =
+    game?.players
+      ?.map((p: any) => `${p.user?._id || p.user}:${p.diceOne}:${p.diceTwo}:${p.total}`)
+      .join('|') || '';
+
+  useEffect(() => {
+    if (!game) return;
+
+    if (prevRollSignatureRef.current === null) {
+      prevRollSignatureRef.current = currentRollSignature;
+      return;
+    }
+
+    if (prevRollSignatureRef.current !== currentRollSignature) {
+      prevRollSignatureRef.current = currentRollSignature;
+
+      // Si le lancer provient de l'adversaire (et qu'on ne lançait pas soi-même)
+      const playerWhoJustRolled = game.players?.find((p: any) => {
+        const pId = p.user?._id || p.user;
+        return pId !== user?.id && (p.diceOne > 0 || p.diceTwo > 0);
+      });
+
+      if (playerWhoJustRolled && !isRollingMyDice) {
+        setIsOpponentRolling(true);
+        toast.success(`🎲 ${playerWhoJustRolled.user?.username || 'L’adversaire'} lance les dés !`, {
+          icon: '🎲',
+        });
+
+        // Durée exacte de l'animation 3D synchronisée
+        setTimeout(() => {
+          setIsOpponentRolling(false);
+        }, 1800);
+      }
+    }
+  }, [currentRollSignature, game, user?.id, isRollingMyDice]);
 
   const isPlayerInGame = game?.players?.some(
     (p: any) => (p.user?._id || p.user) === user?.id
@@ -100,10 +142,24 @@ export default function GameDetailsPage({
     user && ((game?.creator?._id || game?.creator) === user.id || user.role === 'ADMIN')
   );
 
+  // Ouverture automatique du Dialog Modal après la fin des lancers
+  useEffect(() => {
+    if (
+      !isOpponentRolling &&
+      !isRollingMyDice &&
+      (game?.status === 'FINISHED' || game?.status === 'CANCELLED' || isOpponentRematchProposal)
+    ) {
+      const timer = setTimeout(() => {
+        setIsResultDialogOpen(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [game?.status, isOpponentRematchProposal, isOpponentRolling, isRollingMyDice]);
+
   const handleCancelGame = async () => {
     if (
       !confirm(
-        'Voulez-vous vraiment annuler et supprimer cette partie ? Les mises engagées seront remboursées à tous les participants.'
+        'Voulez-vous vraiment annuler et supprimer cette partie ? Les mises engagées seront remboursées.'
       )
     ) {
       return;
@@ -111,20 +167,17 @@ export default function GameDetailsPage({
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/games/${gameId}`, {
-        method: 'DELETE',
-      });
-
+      const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        toast.success('Partie annulée avec succès. Vos crédits ont été remboursés !');
+        toast.success('Partie annulée avec succès. Crédits remboursés !');
         await fetchCurrentUser();
         router.push('/dashboard');
       } else {
         toast.error(data.error || 'Impossible d’annuler cette partie.');
       }
     } catch {
-      toast.error('Erreur réseau lors de l’annulation.');
+      toast.error('Erreur réseau.');
     } finally {
       setIsDeleting(false);
     }
@@ -132,7 +185,7 @@ export default function GameDetailsPage({
 
   const handleJoin = async () => {
     if (balance < game.bet) {
-      toast.error(`Solde insuffisant (${game.bet} CR requis, votre solde : ${balance} CR).`);
+      toast.error(`Solde insuffisant (${game.bet} CR requis).`);
       return;
     }
 
@@ -178,6 +231,7 @@ export default function GameDetailsPage({
       toast.success('Vos dés ont été lancés !');
 
       if (updatedGame.status === 'FINISHED') {
+        setIsResultDialogOpen(true);
         const finWinnerId = updatedGame.winner?._id || updatedGame.winner;
         if (finWinnerId === user?.id) {
           setBalanceDelta(updatedGame.totalPot);
@@ -197,7 +251,6 @@ export default function GameDetailsPage({
     }
   };
 
-  // Actions de Revanche
   const handleProposeRematch = async () => {
     if (balance < game.bet) {
       toast.error(`Solde insuffisant (${game.bet} CR requis).`);
@@ -211,10 +264,9 @@ export default function GameDetailsPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'propose' }),
       });
-
       const data = await res.json();
       if (data.success) {
-        toast.success('⚡ Demande de revanche envoyée à votre adversaire !');
+        toast.success('⚡ Demande de revanche envoyée !');
         refetch();
       } else {
         toast.error(data.error || 'Impossible de proposer la revanche.');
@@ -228,7 +280,7 @@ export default function GameDetailsPage({
 
   const handleAcceptRematch = async () => {
     if (balance < game.bet) {
-      toast.error(`Solde insuffisant pour accepter (${game.bet} CR requis).`);
+      toast.error(`Solde insuffisant (${game.bet} CR requis).`);
       return;
     }
 
@@ -242,7 +294,7 @@ export default function GameDetailsPage({
 
       const data = await res.json();
       if (data.success) {
-        toast.success('🎉 Revanche acceptée ! Lancement de la nouvelle partie...');
+        toast.success('🎉 Revanche acceptée ! Lancement...');
         await fetchCurrentUser();
         const nextId = data.data._id;
         router.push(`/games/${nextId}`);
@@ -264,7 +316,6 @@ export default function GameDetailsPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'decline' }),
       });
-
       const data = await res.json();
       if (data.success) {
         toast('Demande de revanche déclinée.', { icon: 'ℹ️' });
@@ -281,7 +332,7 @@ export default function GameDetailsPage({
     return (
       <div className="glass-card p-12 rounded-3xl text-center space-y-4 animate-pulse">
         <Dices className="w-12 h-12 text-[#6C3BFF] mx-auto animate-spin" />
-        <p className="text-sm font-mono text-gray-400">Chargement de l'arène de jeu...</p>
+        <p className="text-sm font-mono text-gray-400">Chargement de l'arène...</p>
       </div>
     );
   }
@@ -297,28 +348,50 @@ export default function GameDetailsPage({
     );
   }
 
+  const isArenaRolling = isRollingMyDice || isOpponentRolling;
+
   return (
-    <div className="space-y-6">
-      {/* Header Bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="w-full max-w-xl mx-auto space-y-3 py-2 px-2 pb-24 select-none">
+      {/* 1. Header Compact et Cagnotte intégrée (Format Horizontal Ultra-Propre) */}
+      <div className="glass-card p-2 px-3 rounded-2xl border border-white/10 flex items-center justify-between gap-2 shadow-lg flex-shrink-0">
+        {/* Titre & Hôte */}
+        <div className="flex items-center gap-2 min-w-0 flex-shrink">
           <Link
             href="/dashboard"
-            className="p-2 rounded-xl bg-[#1A1D26] text-gray-400 hover:text-white border border-white/10"
+            className="p-1.5 rounded-xl bg-[#1A1D26] text-gray-400 hover:text-white border border-white/10 flex-shrink-0"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div>
-            <h1 className="text-xl font-extrabold text-white">Arène de Dés</h1>
-            <p className="text-xs font-mono text-purple-400">
-              Hôte: {game.creator?.username || 'Inconnu'} • Statut: {game.status}
+          <div className="min-w-0 truncate">
+            <h1 className="text-xs font-black text-white leading-none truncate">Arène de Dés</h1>
+            <p className="text-[9px] font-mono text-purple-400 truncate leading-tight mt-0.5">
+              Hôte: {game.creator?.username || 'Inconnu'}
             </p>
           </div>
         </div>
 
-        {/* Live Balance Counter in Arena Header */}
-        <div className="bg-[#1A1D26] border border-white/10 px-3 py-1.5 rounded-2xl flex items-center gap-2">
-          <span className="text-[10px] font-mono text-gray-400 uppercase">Mon Solde</span>
+        {/* Cagnotte Badge Compact (Ligne unique) */}
+        <div className="bg-[#1A1D26] border border-yellow-500/40 px-2.5 py-1 rounded-xl flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 shadow">
+          <Trophy className="w-3.5 h-3.5 text-[#F4B400] flex-shrink-0" />
+          <div className="flex items-baseline gap-1 font-mono">
+            <span className="text-xs font-black text-[#F4B400]">{game.totalPot} CR</span>
+            <span className="text-[9px] text-gray-400 font-normal">({game.bet}/j)</span>
+          </div>
+        </div>
+
+        {/* Bouton avec icône seule pour ré-ouvrir le Dialog / Revanche */}
+        {(game.status === 'FINISHED' || game.status === 'CANCELLED' || isOpponentRematchProposal) && (
+          <button
+            onClick={() => setIsResultDialogOpen(true)}
+            title="Résultat / Revanche"
+            className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border border-yellow-500/40 p-1.5 rounded-xl flex items-center justify-center shadow flex-shrink-0 transition-all hover:scale-105"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-[#F4B400]" />
+          </button>
+        )}
+
+        {/* Live Balance Counter */}
+        <div className="bg-[#1A1D26] border border-white/10 px-2.5 py-1 rounded-xl flex items-center gap-1 whitespace-nowrap flex-shrink-0">
           <AnimatedBalanceCounter
             value={balance}
             delta={balanceDelta}
@@ -328,106 +401,28 @@ export default function GameDetailsPage({
         </div>
       </div>
 
-      {/* Pot Banner */}
-      <div className="glass-card p-5 rounded-3xl border border-yellow-500/30 bg-gradient-to-r from-[#1A1D26] via-[#2A2312] to-[#1A1D26] text-center relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-[#F4B400]/10 rounded-full blur-2xl pointer-events-none"></div>
-
-        <span className="text-xs font-mono text-[#F4B400] font-extrabold uppercase tracking-widest">
-          Cagnotte Totale en Jeu
-        </span>
-        <div className="text-3xl font-mono font-black text-white mt-1 flex items-center justify-center gap-2">
-          <Trophy className="w-8 h-8 text-[#F4B400] drop-shadow-[0_0_10px_rgba(244,180,0,0.5)]" />
-          {game.totalPot.toLocaleString()} <span className="text-sm font-normal text-gray-400">Crédits</span>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-1 font-mono">
-          Mise par joueur : <strong className="text-white">{game.bet} CR</strong>
-        </p>
-      </div>
-
-      {/* Bannières de Fin de Partie Personnalisées */}
-
-      {/* BANNIÈRE 1 : VICTOIRE (Affichée uniquement au vainqueur) */}
-      {isUserWinner && (
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-6 rounded-3xl border border-emerald-500/60 bg-gradient-to-r from-emerald-950/60 via-emerald-900/30 to-emerald-950/60 text-center space-y-2 shadow-2xl relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-emerald-500/10 blur-xl pointer-events-none"></div>
-          <Sparkles className="w-12 h-12 text-[#F4B400] mx-auto animate-bounce" />
-          <h2 className="text-2xl font-black text-white">🎉 VICTOIRE ÉCLATANTE !</h2>
-          <p className="text-xs text-emerald-300 font-mono">
-            Vous avez obtenu le meilleur score et vous remportez la totalité de la cagnotte de{' '}
-            <strong className="text-[#F4B400] font-extrabold">{game.totalPot} Crédits</strong> !
-          </p>
-        </motion.div>
-      )}
-
-      {/* BANNIÈRE 2 : DÉFAITE (Affichée uniquement aux perdants) */}
-      {isUserLoser && (
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-6 rounded-3xl border border-rose-500/50 bg-gradient-to-r from-rose-950/50 via-rose-900/20 to-rose-950/50 text-center space-y-2 shadow-2xl relative overflow-hidden"
-        >
-          <Frown className="w-10 h-10 text-rose-400 mx-auto" />
-          <h2 className="text-xl font-bold text-white">💔 DÉFAITE</h2>
-          <p className="text-xs text-rose-300 font-mono">
-            Victoire de <strong className="text-white font-extrabold">{game.winner?.username || 'votre adversaire'}</strong> avec son score supérieur. Votre mise de {game.bet} CR a été engagée.
-          </p>
-        </motion.div>
-      )}
-
-      {/* BANNIÈRE 3 : ÉGALITÉ / MATCH NUL */}
-      {isGameTie && (
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-6 rounded-3xl border border-purple-500/50 bg-gradient-to-r from-purple-950/50 via-indigo-900/30 to-purple-950/50 text-center space-y-2 shadow-2xl relative overflow-hidden"
-        >
-          <Scale className="w-10 h-10 text-purple-300 mx-auto" />
-          <h2 className="text-xl font-extrabold text-white">🤝 MATCH NUL / ÉGALITÉ !</h2>
-          <p className="text-xs text-purple-300 font-mono">
-            Les joueurs ont obtenu un score strictement égal. Vos crédits de mise (<strong className="text-white">{game.bet} CR</strong>) vous ont été automatiquement restitués !
-          </p>
-        </motion.div>
-      )}
-
-      {/* BANNIÈRE 4 : PARTIE ANNULÉE / SUPPRIMÉE */}
-      {game.status === 'CANCELLED' && (
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-6 rounded-3xl border border-rose-500/50 bg-gradient-to-r from-rose-950/50 via-rose-900/20 to-rose-950/50 text-center space-y-2 shadow-2xl relative overflow-hidden"
-        >
-          <Ban className="w-10 h-10 text-rose-400 mx-auto" />
-          <h2 className="text-xl font-bold text-white">🚫 PARTIE ANNULÉE</h2>
-          <p className="text-xs text-rose-300 font-mono">
-            Cette partie a été annulée par son créateur. Les crédits engagés (<strong className="text-white">{game.bet} CR</strong>) ont été automatiquement restitués aux participants.
-          </p>
-        </motion.div>
-      )}
-
-      {/* Arène de Dés Jaune Centrale (Dés partagés entre tous les joueurs) */}
+      {/* 2. ARÈNE JAUNE CENTRALE (Dés Partagés & Animation 3D Simultanée) */}
       {(() => {
         const playerWhoRolled = game?.players?.find(
           (p: any) => p.diceOne > 0 || p.diceTwo > 0
         );
 
-        const sharedDiceOne = isRollingMyDice
+        const sharedDiceOne = isArenaRolling
           ? 0
           : userPlayerDoc?.diceOne > 0
           ? userPlayerDoc.diceOne
           : playerWhoRolled?.diceOne || 6;
 
-        const sharedDiceTwo = isRollingMyDice
+        const sharedDiceTwo = isArenaRolling
           ? 0
           : userPlayerDoc?.diceTwo > 0
           ? userPlayerDoc.diceTwo
           : playerWhoRolled?.diceTwo || 4;
 
-        const activeRollerName = isRollingMyDice
-          ? user?.username
+        const activeRollerName = isArenaRolling
+          ? isRollingMyDice
+            ? user?.username
+            : playerWhoRolled?.user?.username || 'Adversaire'
           : userPlayerDoc?.diceOne > 0
           ? user?.username
           : playerWhoRolled?.user?.username || null;
@@ -438,7 +433,7 @@ export default function GameDetailsPage({
           <SharedDiceArena
             diceOne={sharedDiceOne}
             diceTwo={sharedDiceTwo}
-            isRolling={isRollingMyDice}
+            isRolling={isArenaRolling}
             activeRollerName={activeRollerName}
             canRoll={canRollInArena}
             onRoll={handleRollMyDice}
@@ -448,248 +443,99 @@ export default function GameDetailsPage({
         );
       })()}
 
-      {/* Players Arena Cards with Live Score Tracker */}
-      <div className="space-y-3">
-        <h3 className="font-extrabold text-white text-sm flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#6C3BFF]" />
-            Joueurs engagés ({game.players?.length}/{game.maxPlayers})
-          </span>
-          <span className="text-xs font-mono text-gray-400">
-            {game.status === 'FINISHED' ? 'Partie Terminée' : 'Lancers en cours'}
-          </span>
-        </h3>
-
-        <div className="grid grid-cols-1 gap-4">
+      {/* 3. Tableau d'Affichage des Joueurs & Actions */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
           {game.players?.map((playerDoc: any, idx: number) => {
             const playerUser = playerDoc.user;
             const isThisPlayerUser = (playerUser?._id || playerUser) === user?.id;
             const isWinner =
               game.winner?._id === playerUser?._id || game.winner === playerUser?._id;
             const hasPlayerRolled = playerDoc.total > 0 || playerDoc.diceOne > 0;
-            const isCurrentlyRolling = isRollingMyDice && isThisPlayerUser;
 
             return (
-              <motion.div
+              <div
                 key={idx}
-                layout
-                className={`glass-card p-5 rounded-3xl border transition-all space-y-3 ${
+                className={`p-2.5 rounded-2xl border transition-all flex items-center justify-between gap-2 overflow-hidden ${
                   isWinner
-                    ? 'border-emerald-500/60 bg-emerald-950/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
-                    : isCurrentlyRolling
-                    ? 'border-[#F4B400] bg-purple-950/30 shadow-[0_0_20px_rgba(244,180,0,0.3)]'
-                    : 'border-white/10'
+                    ? 'border-emerald-500/60 bg-emerald-950/40 shadow'
+                    : isThisPlayerUser
+                    ? 'border-purple-500/40 bg-purple-950/20'
+                    : 'border-white/10 bg-[#12141D]'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#6C3BFF] to-[#330098] border border-purple-500/40 flex items-center justify-center font-extrabold text-white text-base shadow-md">
-                      {playerUser?.username?.substring(0, 2).toUpperCase() || 'P'}
-                    </div>
-                    <div>
-                      <h4 className="font-extrabold text-white text-base flex items-center gap-2">
-                        {playerUser?.username || 'Joueur'}
-                        {isThisPlayerUser && (
-                          <span className="text-[10px] font-mono text-purple-400 bg-purple-500/20 border border-purple-500/30 px-1.5 py-0.5 rounded-md">
-                            Moi
-                          </span>
-                        )}
-                        {isWinner && (
-                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Trophy className="w-3 h-3 text-[#F4B400]" /> Vainqueur
-                          </span>
-                        )}
-                      </h4>
-                      <p className="text-[10px] font-mono text-gray-400">
-                        {hasPlayerRolled
-                          ? `Lancer effectué dans l'arène`
-                          : 'En attente du lancer de dés...'}
-                      </p>
-                    </div>
+                <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#6C3BFF] to-[#330098] flex items-center justify-center font-black text-white text-xs flex-shrink-0">
+                    {playerUser?.username?.substring(0, 2).toUpperCase() || 'P'}
                   </div>
-
-                  <div className="text-right">
-                    <span className="text-[10px] font-mono text-gray-400 block uppercase">
-                      Total Dé
-                    </span>
-                    <span className="text-xl font-mono font-black text-[#F4B400]">
-                      {hasPlayerRolled ? playerDoc.total : '?'}
-                    </span>
+                  <div className="min-w-0 flex-1 truncate">
+                    <h4 className="font-bold text-white text-xs truncate">
+                      {playerUser?.username || 'Joueur'}
+                    </h4>
+                    <p className="text-[9px] font-mono text-gray-400 truncate flex items-center gap-1">
+                      {isThisPlayerUser && <span className="text-purple-400 font-bold">(Moi)</span>}
+                      {hasPlayerRolled ? `${playerDoc.diceOne} + ${playerDoc.diceTwo}` : 'En attente...'}
+                    </p>
                   </div>
                 </div>
 
-                {hasPlayerRolled && (
-                  <div className="p-2.5 rounded-xl bg-[#0B0D13] border border-white/5 flex items-center justify-between text-xs font-mono text-gray-300 px-4">
-                    <span>Résultat du lancer sur les dés partagés :</span>
-                    <span className="font-extrabold text-white">
-                      Dé #1 = <strong className="text-[#F4B400]">{playerDoc.diceOne}</strong> • Dé #2 = <strong className="text-[#F4B400]">{playerDoc.diceTwo}</strong>
-                    </span>
-                  </div>
-                )}
-              </motion.div>
+                <div className="text-right flex-shrink-0 min-w-[36px]">
+                  <span className="text-[9px] font-mono text-gray-400 block uppercase leading-none">Score</span>
+                  <span className="text-sm font-mono font-black text-[#F4B400] leading-tight">
+                    {hasPlayerRolled ? playerDoc.total : '?'}
+                  </span>
+                </div>
+              </div>
             );
           })}
         </div>
-      </div>
 
-      {/* Action Buttons & Rematch Controls */}
-      <div className="pt-4 space-y-3">
-        {/* BOUTON : Rejoindre la partie */}
-        {!isPlayerInGame && game.status !== 'FINISHED' && (
-          <div className="space-y-2">
-            {balance < game.bet && (
-              <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-center space-y-1">
-                <p className="text-xs font-bold text-rose-300 flex items-center justify-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-rose-400" />
-                  Solde insuffisant pour rejoindre cette partie
-                </p>
-                <p className="text-[11px] font-mono text-gray-400">
-                  Mise requise : <strong className="text-white">{game.bet} CR</strong> • Votre solde : <strong className="text-[#F4B400]">{balance} CR</strong>
-                </p>
-              </div>
-            )}
-
+        {/* Actions Secondaires : Rejoindre / Annuler */}
+        <div className="flex items-center gap-2">
+          {!isPlayerInGame && game.status !== 'FINISHED' && (
             <button
               onClick={handleJoin}
               disabled={isJoining || game.players?.length >= game.maxPlayers || balance < game.bet}
-              className={`w-full py-4 rounded-2xl font-extrabold text-sm uppercase tracking-wider shadow-xl transition-all flex items-center justify-center gap-2 ${
-                balance < game.bet
-                  ? 'bg-[#1A1D26] text-gray-500 border border-white/5 cursor-not-allowed'
-                  : 'gold-gradient text-[#0F1117] gold-glow hover:opacity-95'
-              }`}
+              className="w-full py-2.5 rounded-xl gold-gradient text-[#0F1117] font-black text-xs uppercase shadow hover:opacity-95 disabled:opacity-50"
             >
-              <CheckCircle2 className="w-5 h-5" />
-              {isJoining
-                ? 'Rejointement...'
-                : balance < game.bet
-                ? `Solde Insuffisant (${game.bet} CR)`
-                : `Rejoindre l'arène (${game.bet} CR)`}
+              {isJoining ? 'Rejointement...' : `Rejoindre (${game.bet} CR)`}
             </button>
-          </div>
-        )}
+          )}
 
-        {/* BOUTON : Lancer MES dés */}
-        {isPlayerInGame && !hasUserRolled && game.status !== 'FINISHED' && (
-          <button
-            onClick={handleRollMyDice}
-            disabled={isRollingMyDice || game.players?.length < 2}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-[#6C3BFF] via-[#5b2ee6] to-[#4b00d4] text-white font-extrabold text-sm uppercase tracking-wider shadow-xl purple-glow hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <Play className="w-5 h-5 fill-current" />
-            {isRollingMyDice
-              ? '🎲 Lancer de mes dés en cours...'
-              : game.players?.length < 2
-              ? 'En attente du second joueur...'
-              : '🎲 Lancer MES Dés !'}
-          </button>
-        )}
-
-        {/* INDICATEUR : Attente du lancer des autres joueurs */}
-        {isPlayerInGame && hasUserRolled && game.status !== 'FINISHED' && (
-          <div className="glass-card p-4 rounded-2xl text-center space-y-1 border border-purple-500/30">
-            <p className="text-sm font-bold text-white flex items-center justify-center gap-2">
-              <Dices className="w-4 h-4 text-[#F4B400] animate-spin" />
-              Vos dés sont lancés (Score : {userPlayerDoc?.total})
-            </p>
-            <p className="text-xs text-purple-300 font-mono">
-              En attente du lancer de dés des autres joueurs pour révéler le gagnant...
-            </p>
-          </div>
-        )}
-
-        {/* GESTION DE LA REVANCHE INTERACTIVE À LA FIN DU JEU */}
-        {game.status === 'FINISHED' && isPlayerInGame && (
-          <div className="pt-2">
-            {/* CAS 1 : Aucune demande de revanche formulée */}
-            {!rematchRequesterId && (
-              <div className="space-y-2">
-                {balance < game.bet && (
-                  <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-center space-y-1">
-                    <p className="text-xs font-bold text-rose-300 flex items-center justify-center gap-1.5">
-                      <AlertCircle className="w-4 h-4 text-rose-400" />
-                      Solde insuffisant pour proposer une revanche
-                    </p>
-                  </div>
-                )}
-                <button
-                  onClick={handleProposeRematch}
-                  disabled={isRematchLoading || balance < game.bet}
-                  className={`w-full py-4 rounded-2xl font-extrabold text-sm uppercase tracking-wider shadow-xl transition-all flex items-center justify-center gap-2 ${
-                    balance < game.bet
-                      ? 'bg-[#1A1D26] text-gray-500 border border-white/5 cursor-not-allowed'
-                      : 'gold-gradient text-[#0F1117] gold-glow hover:opacity-95'
-                  }`}
-                >
-                  <RotateCcw className={`w-5 h-5 ${isRematchLoading ? 'animate-spin' : ''}`} />
-                  {isRematchLoading ? 'Envoi...' : `⚡ Proposer une Revanche (${game.bet} CR)`}
-                </button>
-              </div>
-            )}
-
-            {/* CAS 2 : J'ai proposé la revanche -> En attente de l'adversaire */}
-            {isMyRematchProposal && (
-              <div className="glass-card p-5 rounded-3xl border border-purple-500/40 text-center space-y-2 bg-purple-950/20">
-                <Dices className="w-8 h-8 text-[#F4B400] mx-auto animate-spin" />
-                <h4 className="font-extrabold text-white text-sm">
-                  Demande de Revanche envoyée !
-                </h4>
-                <p className="text-xs text-purple-300 font-mono">
-                  En attente que votre adversaire accepte la revanche...
-                </p>
-              </div>
-            )}
-
-            {/* CAS 3 : Mon adversaire m'a proposé une revanche -> Bannière de réponse */}
-            {isOpponentRematchProposal && (
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="glass-card p-6 rounded-3xl border border-yellow-500/50 bg-gradient-to-r from-yellow-950/40 via-amber-900/20 to-yellow-950/40 text-center space-y-3 shadow-2xl"
-              >
-                <Sparkles className="w-8 h-8 text-[#F4B400] mx-auto animate-bounce" />
-                <h3 className="text-base font-extrabold text-white">
-                  ⚡ Votre adversaire vous propose une Revanche !
-                </h3>
-                <p className="text-xs text-yellow-200 font-mono">
-                  Mise requise : <strong className="text-white">{game.bet} CR</strong>
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    onClick={handleAcceptRematch}
-                    disabled={isRematchLoading || balance < game.bet}
-                    className="py-3 px-4 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs uppercase shadow-lg gold-glow flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Accepter ({game.bet} CR)
-                  </button>
-
-                  <button
-                    onClick={handleDeclineRematch}
-                    disabled={isRematchLoading}
-                    className="py-3 px-4 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-white/10"
-                  >
-                    <X className="w-4 h-4" />
-                    Décliner
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </div>
-        )}
-
-        {/* BOUTON CRÉATEUR : Annuler / Supprimer la partie */}
-        {isCreator && game.status !== 'FINISHED' && game.status !== 'CANCELLED' && (
-          <button
-            onClick={handleCancelGame}
-            disabled={isDeleting}
-            className="w-full py-3.5 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-extrabold text-xs uppercase tracking-wider shadow-lg transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4 text-rose-400" />
-            {isDeleting ? 'Suppression en cours...' : 'Annuler & Supprimer cette Partie'}
-          </button>
-        )}
+          {isCreator && game.status !== 'FINISHED' && game.status !== 'CANCELLED' && (
+            <button
+              onClick={handleCancelGame}
+              disabled={isDeleting}
+              className="py-2 px-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 font-bold text-[10px] uppercase flex items-center gap-1 flex-shrink-0"
+            >
+              <Trash2 className="w-3 h-3 text-rose-400" />
+              Annuler
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 4. MODAL DIALOG : Victoire, Défaite, Égalité & Proposition de Revanche */}
+      <GameResultDialog
+        isOpen={isResultDialogOpen}
+        onClose={() => setIsResultDialogOpen(false)}
+        gameStatus={game.status}
+        isUserWinner={isUserWinner}
+        isUserLoser={isUserLoser}
+        isGameTie={isGameTie}
+        isCancelled={game.status === 'CANCELLED'}
+        winnerUsername={game.winner?.username}
+        totalPot={game.totalPot}
+        bet={game.bet}
+        rematchRequesterId={rematchRequesterId}
+        isMyRematchProposal={isMyRematchProposal}
+        isOpponentRematchProposal={isOpponentRematchProposal}
+        isRematchLoading={isRematchLoading}
+        canAffordRematch={balance >= game.bet}
+        onProposeRematch={handleProposeRematch}
+        onAcceptRematch={handleAcceptRematch}
+        onDeclineRematch={handleDeclineRematch}
+      />
     </div>
   );
 }
