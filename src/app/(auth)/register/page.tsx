@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuthStore } from '@/store/useAuthStore';
 import toast from 'react-hot-toast';
 import { User as UserIcon, Mail, Lock, Globe, ArrowRight } from 'lucide-react';
@@ -30,7 +31,7 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (data.success) {
-        toast.success('Bienvenue sur Le Terre ! +100 crédits d\'accueil offerts !');
+        toast.success('Bienvenue sur Le Terre ! Compte créé avec succès !');
         await fetchCurrentUser();
         router.push('/dashboard');
       } else {
@@ -46,16 +47,22 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-[#0F1117] flex flex-col justify-center p-6 max-w-md mx-auto relative">
       <div className="text-center mb-6">
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6C3BFF] to-[#330098] p-0.5 shadow-xl purple-glow flex items-center justify-center mb-4">
-          <span className="font-extrabold text-white text-2xl">LT</span>
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6C3BFF]/20 to-[#330098]/30 p-2 border border-purple-500/40 shadow-xl purple-glow flex items-center justify-center mb-4 relative overflow-hidden">
+          <Image
+            src="/favicon.png"
+            alt="Le Terre Logo"
+            width={52}
+            height={52}
+            className="object-contain"
+          />
         </div>
-        <h1 className="text-2xl font-extrabold text-white">Créer un compte</h1>
-        <p className="text-xs text-gray-400 mt-1">Rejoignez l'élite des joueurs Le Terre</p>
+        <h1 className="text-2xl font-extrabold text-white">Inscription</h1>
+        <p className="text-xs text-gray-400 mt-1">Rejoignez l'arène de jeu Le Terre</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
-          <label className="text-xs font-mono text-gray-400">Nom d'utilisateur (Pseudo)</label>
+          <label className="text-xs font-mono text-gray-400">Nom d'utilisateur</label>
           <div className="relative">
             <UserIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
@@ -63,7 +70,7 @@ export default function RegisterPage() {
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Pseudo_Gagnant"
+              placeholder="Pseudo"
               className="w-full bg-[#1A1D26] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#6C3BFF] transition-all"
             />
           </div>
@@ -100,19 +107,19 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-mono text-gray-400">Pays de résidence</label>
+          <label className="text-xs font-mono text-gray-400">Pays</label>
           <div className="relative">
             <Globe className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
             <select
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-              className="w-full bg-[#1A1D26] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-[#6C3BFF] transition-all appearance-none"
+              className="w-full bg-[#1A1D26] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-[#6C3BFF] transition-all"
             >
-              <option value="CM">🇨🇲 Cameroun (Mobile Money OM / MTN)</option>
-              <option value="CI">🇨🇮 Côte d'Ivoire (Wave / Mobile Money)</option>
-              <option value="SN">🇸🇳 Sénégal (Wave / Mobile Money)</option>
-              <option value="FR">🇫🇷 France / Europe (Stripe / CB)</option>
-              <option value="US">🇺🇸 États-Unis / International (Stripe / CB)</option>
+              <option value="CM">Cameroun 🇨🇲</option>
+              <option value="CI">Côte d'Ivoire 🇨🇮</option>
+              <option value="SN">Sénégal 🇸🇳</option>
+              <option value="FR">France 🇫🇷</option>
+              <option value="OTHER">Autre</option>
             </select>
           </div>
         </div>
@@ -120,19 +127,26 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 rounded-xl gold-gradient text-[#0F1117] font-bold text-sm shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+          className="w-full py-3.5 px-4 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg gold-glow uppercase tracking-wider hover:opacity-95 transition-all mt-2"
         >
-          {isLoading ? 'Création du compte...' : 'S\'inscrire (+100 Crédits)'}
-          <ArrowRight className="w-4 h-4" />
+          {isLoading ? (
+            'Création du compte...'
+          ) : (
+            <>
+              Créer mon Compte <ArrowRight className="w-4 h-4 stroke-[3]" />
+            </>
+          )}
         </button>
       </form>
 
-      <p className="text-center text-xs text-gray-400 mt-6">
-        Vous avez déjà un compte ?{' '}
-        <Link href="/login" className="text-[#F4B400] font-bold hover:underline">
-          Se connecter
-        </Link>
-      </p>
+      <div className="mt-6 text-center">
+        <p className="text-xs text-gray-400">
+          Vous avez déjà un compte ?{' '}
+          <Link href="/login" className="text-purple-400 font-bold hover:underline">
+            Se connecter
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

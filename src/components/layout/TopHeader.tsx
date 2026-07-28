@@ -2,6 +2,7 @@
 
 import { useAuthStore } from '@/store/useAuthStore';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Plus, Wallet as WalletIcon, ShieldAlert } from 'lucide-react';
 
 import { AnimatedBalanceCounter } from '@/components/ui/AnimatedBalanceCounter';
@@ -14,8 +15,14 @@ export function TopHeader() {
       <div className="max-w-md mx-auto flex items-center justify-between">
         {/* Logo Stitch Brand */}
         <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#6C3BFF] to-[#330098] p-0.5 shadow-lg shadow-purple-950/50 flex items-center justify-center">
-            <span className="font-extrabold text-white text-base tracking-tighter">LT</span>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6C3BFF]/20 to-[#330098]/30 p-1 border border-purple-500/30 shadow-lg shadow-purple-950/50 flex items-center justify-center relative overflow-hidden group">
+            <Image
+              src="/favicon.png"
+              alt="Le Terre Logo"
+              width={36}
+              height={36}
+              className="object-contain transform group-hover:scale-110 transition-transform duration-300"
+            />
           </div>
           <div>
             <h1 className="font-extrabold text-white text-base tracking-tight leading-none">

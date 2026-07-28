@@ -34,6 +34,13 @@ export interface NotchPayChargeResponse {
   };
 }
 
+export interface NotchPayTransferParams {
+  amount: number;
+  phone: string;
+  reference: string;
+  recipientName?: string;
+}
+
 function formatCameroonPhone(phone?: string): string {
   if (!phone) return '';
   const cleaned = phone.replace(/\s+/g, '').replace(/[^0-9+]/g, '');
@@ -52,7 +59,6 @@ export class NotchPayClient {
   ): Promise<NotchPayInitializeResponse> {
     const { PUBLIC_KEY, BASE_URL } = PAYMENT_CONFIG.NOTCHPAY;
 
-    // Si les clés NotchPay ne sont pas configurées, simulation dev
     if (!PUBLIC_KEY) {
       return {
         status: 'success',
@@ -100,9 +106,6 @@ export class NotchPayClient {
     }
   }
 
-  /**
-   * Effectue la charge directe USSD Mobile Money sur le téléphone du client sans redirection
-   */
   public static async chargeDirectPayment(
     trxRef: string,
     phone: string
@@ -144,9 +147,68 @@ export class NotchPayClient {
   }
 
   /**
-   * Interroge l'API NotchPay et résout intelligemment l'état réel (canceled/complete/failed)
-   * même si la référence transmise est la référence interne marchand (DEP-XXX).
+   * Effectue un virement direct Mobile Money (Payout / Transfer) au destinataire via NotchPay API
+   * Avec logs de suivi en console
    */
+  public static async sendTransfer(params: NotchPayTransferParams): Promise<{ success: boolean; message: string; reference?: string }> {
+    const { PUBLIC_KEY, PRIVATE_KEY, BASE_URL } = PAYMENT_CONFIG.NOTCHPAY;
+
+    if (!PUBLIC_KEY || !PRIVATE_KEY) {
+      console.warn('[NOTCHPAY_TRANSFER_LOG] ⚠️ Clé Publique ou Privée manquante. Exécution en mode simulation.');
+      return {
+        success: true,
+        message: 'Mode Simulation : Retrait approuvé (Clés NotchPay non définies).',
+      };
+    }
+
+    try {
+      const formattedPhone = formatCameroonPhone(params.phone);
+      const payload = {
+        amount: params.amount,
+        currency: 'XAF',
+        channel: 'cm.mobile',
+        phone: formattedPhone,
+        reference: params.reference,
+        beneficiary: {
+          phone: formattedPhone,
+          name: params.recipientName || 'Joueur Le Terre',
+        },
+        description: `Retrait Le Terre - ${params.amount} FCFA`,
+      };
+
+      const response = await fetch(`${BASE_URL}/transfers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: PUBLIC_KEY,
+          'X-Grant': PRIVATE_KEY,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && (data.status === 'complete' || data.status === 'success' || data.code === 201 || data.code === 200)) {
+        return {
+          success: true,
+          message: data.message || 'Transfert Mobile Money exécuté avec succès par NotchPay.',
+          reference: data.transfer?.reference || data.reference,
+        };
+      }
+
+      return {
+        success: false,
+        message: data.message || `Erreur NotchPay ${response.status}: ${JSON.stringify(data)}`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: `Erreur virement NotchPay: ${error.message}`,
+      };
+    }
+  }
+
   public static async checkTransactionStatus(
     ref: string
   ): Promise<{ status: string; providerReference?: string } | null> {
@@ -155,7 +217,6 @@ export class NotchPayClient {
     if (!PUBLIC_KEY) return null;
 
     try {
-      // 1. Recherche directe si la référence commence par 'trx.'
       if (ref.startsWith('trx.')) {
         const response = await fetch(`${BASE_URL}/payments/${ref}`, {
           method: 'GET',
@@ -176,7 +237,6 @@ export class NotchPayClient {
         }
       }
 
-      // 2. Résolution dynamique par la liste des paiements pour les références marchand (DEP-...)
       const listResponse = await fetch(`${BASE_URL}/payments`, {
         method: 'GET',
         headers: {
@@ -222,12 +282,9 @@ export class NotchPayClient {
     }
   }
 
-  /**
-   * Vérifie la signature cryptographique du Webhook NotchPay
-   */
   public static verifyWebhookSignature(payload: string, signature: string): boolean {
     const secret = PAYMENT_CONFIG.NOTCHPAY.WEBHOOK_SECRET;
-    if (!secret) return true; // Mode dev
+    if (!secret) return true;
 
     const hmac = crypto.createHmac('sha256', secret);
     const expectedSignature = hmac.update(payload).digest('hex');

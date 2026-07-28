@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuthStore } from '@/store/useAuthStore';
 import toast from 'react-hot-toast';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
@@ -44,8 +45,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0F1117] flex flex-col justify-center p-6 max-w-md mx-auto relative">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6C3BFF] to-[#330098] p-0.5 shadow-xl purple-glow flex items-center justify-center mb-4">
-          <span className="font-extrabold text-white text-2xl">LT</span>
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6C3BFF]/20 to-[#330098]/30 p-2 border border-purple-500/40 shadow-xl purple-glow flex items-center justify-center mb-4 relative overflow-hidden">
+          <Image
+            src="/favicon.png"
+            alt="Le Terre Logo"
+            width={52}
+            height={52}
+            className="object-contain"
+          />
         </div>
         <h1 className="text-2xl font-extrabold text-white">Connexion</h1>
         <p className="text-xs text-gray-400 mt-1">Accédez à votre arène de jeu Le Terre</p>
@@ -85,19 +92,26 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 rounded-xl gold-gradient text-[#0F1117] font-bold text-sm shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+          className="w-full py-3.5 px-4 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg gold-glow uppercase tracking-wider hover:opacity-95 transition-all mt-2"
         >
-          {isLoading ? 'Connexion en cours...' : 'Se connecter'}
-          <ArrowRight className="w-4 h-4" />
+          {isLoading ? (
+            'Connexion en cours...'
+          ) : (
+            <>
+              Se Connecter <ArrowRight className="w-4 h-4 stroke-[3]" />
+            </>
+          )}
         </button>
       </form>
 
-      <p className="text-center text-xs text-gray-400 mt-6">
-        Vous n'avez pas encore de compte ?{' '}
-        <Link href="/register" className="text-[#F4B400] font-bold hover:underline">
-          S'inscrire
-        </Link>
-      </p>
+      <div className="mt-8 text-center">
+        <p className="text-xs text-gray-400">
+          Vous n'avez pas encore de compte ?{' '}
+          <Link href="/register" className="text-purple-400 font-bold hover:underline">
+            S'inscrire
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

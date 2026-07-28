@@ -2,22 +2,31 @@ import { PaymentRouter, DepositRequestParams } from '@/lib/paymentRouter';
 import { TransactionRepository } from '@/repositories/TransactionRepository';
 import { WalletRepository } from '@/repositories/WalletRepository';
 import { LedgerRepository } from '@/repositories/LedgerRepository';
+import { WithdrawRequest } from '@/models/WithdrawRequest';
 import { runTransaction } from '@/lib/db';
 import { WALLET_CONFIG } from '@/config/wallet';
 import { AppError } from '@/lib/errors';
+import { convexCache } from '@/lib/convexCache';
 
 export class WalletService {
   public static async getWallet(userId: string) {
-    const wallet = await WalletRepository.findByUserId(userId);
-    const transactions = await TransactionRepository.findByUserId(userId, 20);
-    const ledger = await LedgerRepository.findByUserId(userId, 20);
+    return convexCache.fetchWithCache(
+      `wallet:${userId}`,
+      async () => {
+        const wallet = await WalletRepository.findByUserId(userId);
+        const transactions = await TransactionRepository.findByUserId(userId, 20);
+        const ledger = await LedgerRepository.findByUserId(userId, 20);
 
-    return {
-      balance: wallet ? wallet.balance : 0, // Solde Réel Retirable (FCFA)
-      walletId: wallet ? wallet._id : null,
-      transactions,
-      ledger,
-    };
+        return {
+          balance: wallet ? wallet.balance : 0, // Solde Réel Retirable (FCFA)
+          walletId: wallet ? wallet._id : null,
+          transactions,
+          ledger,
+        };
+      },
+      15, // Cache pendant 15 secondes
+      [`user:${userId}`, 'wallet']
+    );
   }
 
   public static async deposit(params: Omit<DepositRequestParams, 'reference'> & { userId: string }) {
@@ -67,6 +76,9 @@ export class WalletService {
           );
         }
       });
+
+      // Invalidation instantanée du cache portefeuille pour cet utilisateur
+      convexCache.invalidateTag(`user:${params.userId}`);
     }
     // 2. Si Mobile Money USSD en attente (Solde Réel FCFA)
     else {
@@ -107,6 +119,24 @@ export class WalletService {
 
       const reference = `WITH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+      // 1. Enregistrement de la demande dans la collection WithdrawRequest pour l'admin
+      const withdrawRequest = new WithdrawRequest({
+        user: userId as any,
+        amount,
+        fee: 0,
+        netAmount: amount,
+        provider: 'NOTCHPAY',
+        accountDetails: {
+          phone: accountDetails.phone,
+          accountNumber: accountDetails.accountNumber,
+          bankName: accountDetails.bankName,
+          name: accountDetails.name,
+        },
+        status: 'pending',
+      });
+      await withdrawRequest.save({ session });
+
+      // 2. Enregistrement dans la collection Transaction
       const tx = await TransactionRepository.create(
         {
           user: userId as any,
@@ -121,6 +151,7 @@ export class WalletService {
         session
       );
 
+      // 3. Journalisation dans le Ledger comptable
       await LedgerRepository.createEntry(
         {
           wallet: updatedWallet._id,
@@ -135,6 +166,9 @@ export class WalletService {
         },
         session
       );
+
+      // Invalidation du cache portefeuille utilisateur
+      convexCache.invalidateTag(`user:${userId}`);
 
       return {
         success: true,

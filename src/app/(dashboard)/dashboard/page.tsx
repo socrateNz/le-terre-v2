@@ -10,7 +10,7 @@ import {
   Dices,
   Trophy,
   TrendingUp,
-  Sparkles,
+  Wallet,
   ArrowUpRight,
   Shield,
   Search,
@@ -23,7 +23,7 @@ import toast from 'react-hot-toast';
 import { PrivateGamePasscodeModal } from '@/components/game/PrivateGamePasscodeModal';
 
 export default function DashboardPage() {
-  const { user, balance, setBalance } = useAuthStore();
+  const { user, balance } = useAuthStore();
   const router = useRouter();
 
   const [search, setSearch] = useState('');
@@ -56,21 +56,6 @@ export default function DashboardPage() {
     },
     refetchInterval: 3000,
   });
-
-  const handleAddTestCredit = async () => {
-    try {
-      const res = await fetch('/api/wallet/credit', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setBalance(data.data.balance);
-        toast.success('+500 FCFA de test ajoutés avec succès !');
-      } else {
-        toast.error(data.error || 'Erreur lors du crédit de test.');
-      }
-    } catch {
-      toast.error('Erreur réseau.');
-    }
-  };
 
   const handleGameClick = (game: any) => {
     const isUserInGame = game.players?.some(
@@ -120,13 +105,13 @@ export default function DashboardPage() {
             Créer une Partie
           </Link>
 
-          <button
-            onClick={handleAddTestCredit}
-            className="py-3 px-4 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/40 text-purple-200 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+          <Link
+            href="/wallet"
+            className="py-3 px-4 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/40 text-purple-200 font-bold text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-wide"
           >
-            <Sparkles className="w-4 h-4 text-[#F4B400]" />
-            +500 FCFA Démo
-          </button>
+            <Wallet className="w-4 h-4 text-[#F4B400]" />
+            Recharger Solde
+          </Link>
         </div>
       </div>
 

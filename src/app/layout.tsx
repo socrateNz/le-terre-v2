@@ -4,9 +4,13 @@ import { Providers } from './providers';
 import { InstallPwaPrompt } from '@/components/ui/InstallPwaPrompt';
 
 export const metadata: Metadata = {
-  title: 'Le Terre | Elite Digital Casino',
-  description: 'Plateforme de jeux de dés et d\'arène en temps réel avec portefeuille virtuel.',
+  title: 'Le Terre | Élite Digital Arena',
+  description: 'Plateforme de jeux de dés et d\'arène en temps réel avec portefeuille FCFA.',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export const viewport: Viewport = {
