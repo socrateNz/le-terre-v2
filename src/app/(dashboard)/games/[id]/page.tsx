@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { DiceRoller } from '@/components/game/DiceRoller';
+import { SharedDiceArena } from '@/components/game/SharedDiceArena';
 import { AnimatedBalanceCounter } from '@/components/ui/AnimatedBalanceCounter';
 
 export default function GameDetailsPage({
@@ -407,7 +408,47 @@ export default function GameDetailsPage({
         </motion.div>
       )}
 
-      {/* Players Arena Cards with Live 3D Dice Roller */}
+      {/* Arène de Dés Jaune Centrale (Dés partagés entre tous les joueurs) */}
+      {(() => {
+        const playerWhoRolled = game?.players?.find(
+          (p: any) => p.diceOne > 0 || p.diceTwo > 0
+        );
+
+        const sharedDiceOne = isRollingMyDice
+          ? 0
+          : userPlayerDoc?.diceOne > 0
+          ? userPlayerDoc.diceOne
+          : playerWhoRolled?.diceOne || 6;
+
+        const sharedDiceTwo = isRollingMyDice
+          ? 0
+          : userPlayerDoc?.diceTwo > 0
+          ? userPlayerDoc.diceTwo
+          : playerWhoRolled?.diceTwo || 4;
+
+        const activeRollerName = isRollingMyDice
+          ? user?.username
+          : userPlayerDoc?.diceOne > 0
+          ? user?.username
+          : playerWhoRolled?.user?.username || null;
+
+        const canRollInArena = isPlayerInGame && !hasUserRolled && game.status !== 'FINISHED' && game.players?.length >= 2;
+
+        return (
+          <SharedDiceArena
+            diceOne={sharedDiceOne}
+            diceTwo={sharedDiceTwo}
+            isRolling={isRollingMyDice}
+            activeRollerName={activeRollerName}
+            canRoll={canRollInArena}
+            onRoll={handleRollMyDice}
+            gameStatus={game.status}
+            totalScore={userPlayerDoc?.total}
+          />
+        );
+      })()}
+
+      {/* Players Arena Cards with Live Score Tracker */}
       <div className="space-y-3">
         <h3 className="font-extrabold text-white text-sm flex items-center justify-between">
           <span className="flex items-center gap-2">
@@ -432,7 +473,7 @@ export default function GameDetailsPage({
               <motion.div
                 key={idx}
                 layout
-                className={`glass-card p-5 rounded-3xl border transition-all space-y-4 ${
+                className={`glass-card p-5 rounded-3xl border transition-all space-y-3 ${
                   isWinner
                     ? 'border-emerald-500/60 bg-emerald-950/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
                     : isCurrentlyRolling
@@ -461,7 +502,7 @@ export default function GameDetailsPage({
                       </h4>
                       <p className="text-[10px] font-mono text-gray-400">
                         {hasPlayerRolled
-                          ? `Dés lancés • Score : ${playerDoc.total}`
+                          ? `Lancer effectué dans l'arène`
                           : 'En attente du lancer de dés...'}
                       </p>
                     </div>
@@ -471,27 +512,20 @@ export default function GameDetailsPage({
                     <span className="text-[10px] font-mono text-gray-400 block uppercase">
                       Total Dé
                     </span>
-                    <span className="text-xl font-mono font-black text-white">
+                    <span className="text-xl font-mono font-black text-[#F4B400]">
                       {hasPlayerRolled ? playerDoc.total : '?'}
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-[#0B0D13] border border-white/5 flex items-center justify-around">
-                  <DiceRoller
-                    label="Dé #1"
-                    size="md"
-                    isRolling={isCurrentlyRolling}
-                    value={playerDoc.diceOne}
-                  />
-                  <div className="text-gray-600 font-mono text-xl font-black">+</div>
-                  <DiceRoller
-                    label="Dé #2"
-                    size="md"
-                    isRolling={isCurrentlyRolling}
-                    value={playerDoc.diceTwo}
-                  />
-                </div>
+                {hasPlayerRolled && (
+                  <div className="p-2.5 rounded-xl bg-[#0B0D13] border border-white/5 flex items-center justify-between text-xs font-mono text-gray-300 px-4">
+                    <span>Résultat du lancer sur les dés partagés :</span>
+                    <span className="font-extrabold text-white">
+                      Dé #1 = <strong className="text-[#F4B400]">{playerDoc.diceOne}</strong> • Dé #2 = <strong className="text-[#F4B400]">{playerDoc.diceTwo}</strong>
+                    </span>
+                  </div>
+                )}
               </motion.div>
             );
           })}
