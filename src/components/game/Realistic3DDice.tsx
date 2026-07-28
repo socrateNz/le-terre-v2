@@ -1,16 +1,17 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 interface Realistic3DDiceProps {
   value: number;
   isRolling: boolean;
-  size?: number; // en px (ex: 72, 80)
-  rollSide?: 'left' | 'right';
+  size?: number; // en px (ex: 76)
+  diceIndex?: 1 | 2;
+  trajectorySeed?: number; // Génère une nouvelle trajectoire aléatoire unique à chaque lancer
 }
 
-// Emplacements des points pour chaque valeur de 1 à 6
+// Emplacements des points (pips) pour chaque valeur de 1 à 6
 const PIP_CONFIGS: Record<number, Array<{ top: string; left: string }>> = {
   1: [{ top: '50%', left: '50%' }],
   2: [
@@ -60,10 +61,12 @@ export function Realistic3DDice({
   value,
   isRolling,
   size = 76,
-  rollSide = 'left',
+  diceIndex = 1,
+  trajectorySeed = 0,
 }: Realistic3DDiceProps) {
   const halfSize = size / 2;
 
+  // Calcul du style de transformation pour chaque face en 3D
   const faceTransformStyles = useMemo(() => {
     return {
       1: `translateZ(${halfSize}px)`,
@@ -75,87 +78,119 @@ export function Realistic3DDice({
     };
   }, [halfSize]);
 
+  // Génération de trajectoires PHYSIQUES ALÉATOIRES sans direction prédéfinie
+  const randomTrajectory = useMemo(() => {
+    const isLeft = diceIndex === 1;
+
+    // Positions X aléatoires amples à travers le grand tapis jaune
+    const startX = isLeft
+      ? -180 - Math.random() * 80
+      : 180 + Math.random() * 80;
+    const midX1 = (Math.random() - 0.5) * 260;
+    const midX2 = isLeft ? -90 + Math.random() * 120 : 90 - Math.random() * 120;
+    const restX = isLeft ? -45 + Math.random() * 20 : 45 - Math.random() * 20;
+
+    // Hauteurs de rebonds Y aléatoires (effet de lancer en l'air et choc sur le tapis)
+    const startY = -150 - Math.random() * 90;
+    const bounce1Y = 25 + Math.random() * 20;
+    const peak2Y = -80 - Math.random() * 50;
+    const bounce2Y = 15 + Math.random() * 15;
+    const peak3Y = -35 - Math.random() * 25;
+    const restY = (Math.random() - 0.5) * 30;
+
+    // Rotations 3D imprévisibles sur les 3 axes X, Y, Z
+    const spinDirection = isLeft ? 1 : -1;
+    const revsX = (4 + Math.floor(Math.random() * 3)) * 360 * spinDirection;
+    const revsY = (5 + Math.floor(Math.random() * 3)) * 360 * spinDirection;
+
+    const rotZ1 = (Math.random() - 0.5) * 360;
+    const rotZ2 = (Math.random() - 0.5) * 540;
+    const rotZ3 = (Math.random() - 0.5) * 180;
+    const restZ = (Math.random() - 0.5) * 30; // légère inclinaison naturelle au repos
+
+    return {
+      x: [startX, midX1, midX2, restX / 2, restX],
+      y: [startY, bounce1Y, peak2Y, bounce2Y, peak3Y, restY],
+      scale: [1.35, 0.8, 1.25, 0.9, 1.1, 1],
+      shadowOpacity: [0.15, 0.7, 0.25, 0.6, 0.35, 0.55],
+      shadowScale: [0.35, 1.35, 0.5, 1.2, 0.7, 1.0],
+      rotateX: [0, revsX * 0.3, revsX * 0.65, revsX * 0.85, revsX],
+      rotateY: [0, revsY * 0.35, revsY * 0.7, revsY * 0.9, revsY],
+      rotateZ: [rotZ1, rotZ2, rotZ3, restZ],
+      restX,
+      restY,
+      restZ,
+    };
+    // Re-calcule une nouvelle trajectoire aléatoire à chaque nouveau lancer ou seed
+  }, [diceIndex, trajectorySeed, isRolling]);
+
   const targetRotation = TARGET_ROTATIONS[value] || TARGET_ROTATIONS[1];
-
-  // Déplacement et rebondissements physique à travers l'arène jaune
-  const travelX =
-    rollSide === 'left'
-      ? [-140, -40, -90, -20, -50, 0]
-      : [140, 40, 90, 20, 50, 0];
-
-  const travelY = [-75, 0, -45, 0, -20, 0];
 
   return (
     <div className="flex flex-col items-center justify-center relative select-none">
-      {/* Conteneur 3D avec Perspective */}
+      {/* Conteneur 3D avec Perspective Élargie */}
       <div
         className="relative flex items-center justify-center"
         style={{
-          width: `${size * 1.5}px`,
-          height: `${size * 1.5}px`,
-          perspective: '1000px',
+          width: `${size * 1.6}px`,
+          height: `${size * 1.6}px`,
+          perspective: '1200px',
         }}
       >
-        {/* Ombre portée réaliste au sol qui se déplace en phase avec le dé */}
+        {/* Ombre portée dynamique au sol qui suit les rebonds et le vol du dé */}
         <motion.div
           animate={
             isRolling
               ? {
-                  x: travelX,
-                  scale: [0.4, 1.2, 0.6, 1.1, 0.8, 1],
-                  opacity: [0.2, 0.6, 0.3, 0.5, 0.4, 0.55],
+                  x: randomTrajectory.x,
+                  scale: randomTrajectory.shadowScale,
+                  opacity: randomTrajectory.shadowOpacity,
                 }
               : {
-                  x: 0,
+                  x: randomTrajectory.restX,
+                  y: randomTrajectory.restY,
                   scale: value ? 1 : 0.9,
                   opacity: value ? 0.55 : 0.4,
                 }
           }
           transition={
             isRolling
-              ? { repeat: Infinity, duration: 0.8, ease: 'easeOut' }
+              ? { repeat: Infinity, duration: 1.1, ease: [0.25, 1, 0.5, 1] }
               : { duration: 0.4 }
           }
-          className="absolute rounded-full bg-black/40 blur-md pointer-events-none"
+          className="absolute rounded-full bg-black/45 blur-md pointer-events-none"
           style={{
-            width: `${size * 1.1}px`,
-            height: `${size * 0.4}px`,
+            width: `${size * 1.15}px`,
+            height: `${size * 0.42}px`,
             bottom: `${size * 0.05}px`,
           }}
         />
 
-        {/* Cube 3D Animé qui culbute ET se déplace à travers la table */}
+        {/* Cube 3D Animé avec vol, rebonds et culbutage totalement aléatoires */}
         <motion.div
           animate={
             isRolling
               ? {
-                  x: travelX,
-                  y: travelY,
-                  rotateX:
-                    rollSide === 'left'
-                      ? [0, 360, 720, 1080, 1440]
-                      : [0, -360, -720, -1080, -1440],
-                  rotateY:
-                    rollSide === 'left'
-                      ? [0, 540, 900, 1260, 1620]
-                      : [0, -540, -900, -1260, -1620],
-                  rotateZ:
-                    rollSide === 'left'
-                      ? [-60, 30, -90, 45, 0]
-                      : [60, -30, 90, -45, 0],
+                  x: randomTrajectory.x,
+                  y: randomTrajectory.y,
+                  scale: randomTrajectory.scale,
+                  rotateX: randomTrajectory.rotateX,
+                  rotateY: randomTrajectory.rotateY,
+                  rotateZ: randomTrajectory.rotateZ,
                 }
               : {
-                  x: 0,
-                  y: 0,
+                  x: randomTrajectory.restX,
+                  y: randomTrajectory.restY,
+                  scale: 1,
                   rotateX: targetRotation.rx,
                   rotateY: targetRotation.ry,
-                  rotateZ: 0,
+                  rotateZ: randomTrajectory.restZ,
                 }
           }
           transition={
             isRolling
-              ? { repeat: Infinity, duration: 0.8, ease: 'easeOut' }
-              : { type: 'spring', stiffness: 200, damping: 17 }
+              ? { repeat: Infinity, duration: 1.1, ease: [0.25, 1, 0.5, 1] }
+              : { type: 'spring', stiffness: 210, damping: 18 }
           }
           style={{
             width: `${size}px`,
@@ -181,8 +216,8 @@ export function Realistic3DDice({
                   background:
                     'linear-gradient(145deg, #ffffff 0%, #f4f4f6 50%, #e2e2e8 100%)',
                   boxShadow:
-                    'inset 0 0 6px rgba(0,0,0,0.12), inset 0 2px 4px rgba(255,255,255,0.9), 0 4px 10px rgba(0,0,0,0.25)',
-                  border: '1px solid rgba(210,210,220,0.85)',
+                    'inset 0 0 6px rgba(0,0,0,0.12), inset 0 2px 4px rgba(255,255,255,0.9), 0 5px 14px rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(210,210,220,0.9)',
                 }}
                 className="absolute inset-0 p-1 flex items-center justify-center overflow-hidden"
               >
@@ -191,7 +226,7 @@ export function Realistic3DDice({
                   className="absolute inset-x-0 top-0 h-1/2 rounded-t-xl pointer-events-none opacity-40"
                   style={{
                     background:
-                      'linear-gradient(to bottom, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%)',
+                      'linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 100%)',
                   }}
                 />
 
