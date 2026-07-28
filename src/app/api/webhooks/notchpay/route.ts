@@ -6,6 +6,50 @@ import { NotchPayClient } from '@/lib/notchpay';
 import { runTransaction } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const reference = searchParams.get('reference') || searchParams.get('ref');
+
+    if (reference) {
+      await runTransaction(async (session) => {
+        const tx = await TransactionRepository.findByReference(reference, session);
+        if (tx && tx.status !== 'completed') {
+          const walletBefore = await WalletRepository.findByUserId(tx.user.toString(), session);
+          const balanceBefore = walletBefore?.balance || 0;
+
+          const updatedWallet = await WalletRepository.updateBalance(tx.user.toString(), tx.amount, session);
+          if (updatedWallet) {
+            await TransactionRepository.updateStatus(reference, 'completed', session);
+
+            await LedgerRepository.createEntry(
+              {
+                wallet: updatedWallet._id,
+                user: tx.user,
+                type: 'CREDIT',
+                amount: tx.amount,
+                balanceBefore,
+                balanceAfter: updatedWallet.balance,
+                reference,
+                reason: 'DEPOSIT',
+                transaction: tx._id,
+              },
+              session
+            );
+          }
+        }
+      });
+    }
+
+    const origin = req.nextUrl.origin;
+    return NextResponse.redirect(`${origin}/wallet?status=success`);
+  } catch (error: any) {
+    logger.error('GET Webhook NotchPay Exception', error);
+    const origin = req.nextUrl.origin;
+    return NextResponse.redirect(`${origin}/wallet?status=error`);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();

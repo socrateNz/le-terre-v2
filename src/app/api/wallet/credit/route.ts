@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: result,
-      message: '+100 crédits de test ajoutés avec succès !',
+      message: '+500 FCFA de test ajoutés avec succès !',
     });
   } catch (error: any) {
     if (error instanceof AppError) {

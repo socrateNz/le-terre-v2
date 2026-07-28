@@ -1,13 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/useAuthStore';
 import toast from 'react-hot-toast';
-import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Sparkles, CreditCard, Smartphone, ShieldCheck, History } from 'lucide-react';
+import {
+  Wallet,
+  Plus,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Sparkles,
+  CreditCard,
+  Smartphone,
+  ShieldCheck,
+  History,
+  CheckCircle2,
+} from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export default function WalletPage() {
-  const { user, balance, setBalance } = useAuthStore();
+  const { user, balance, setBalance, fetchCurrentUser } = useAuthStore();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
@@ -29,8 +44,27 @@ export default function WalletPage() {
     },
   });
 
+  // Détection du retour de paiement via URL (NotchPay / Stripe redirect)
+  useEffect(() => {
+    const status = searchParams.get('status');
+    if (status === 'success') {
+      toast.success('🎉 Dépôt effectué avec succès ! Votre solde a été crédité.');
+      fetchCurrentUser();
+      refetch();
+      router.replace('/wallet');
+    } else if (status === 'cancel' || status === 'error') {
+      toast.error('Le paiement a été annulé ou interrompu.');
+      router.replace('/wallet');
+    }
+  }, [searchParams, fetchCurrentUser, refetch, router]);
+
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (depositAmount < 50) {
+      toast.error('Le montant minimum de rechargement est de 50 FCFA.');
+      return;
+    }
+
     setIsDepositLoading(true);
 
     try {
@@ -49,13 +83,18 @@ export default function WalletPage() {
 
       if (data.success) {
         if (paymentMethod === 'TEST_CREDIT') {
-          toast.success('+500 FCFA de démonstration ajoutés !');
-          setBalance(balance + 500);
-          refetch();
+          toast.success(`+${depositAmount} FCFA de démonstration ajoutés avec succès !`);
+          await fetchCurrentUser();
+          await refetch();
           setShowDepositModal(false);
-        } else if (data.data.redirectUrl) {
-          toast.loading('Redirection vers la passerelle de paiement...');
+        } else if (data.data?.redirectUrl) {
+          toast.loading('Redirection vers la passerelle de paiement sécurisée...');
           window.location.href = data.data.redirectUrl;
+        } else {
+          toast.success('Demande de rechargement en cours...');
+          await fetchCurrentUser();
+          await refetch();
+          setShowDepositModal(false);
         }
       } else {
         toast.error(data.error || 'Erreur lors du dépôt.');
@@ -89,9 +128,9 @@ export default function WalletPage() {
       const data = await res.json();
 
       if (data.success) {
-        toast.success('Demande de retrait transmise ! En cours de traitement.');
-        setBalance(balance - withdrawAmount);
-        refetch();
+        toast.success('Demande de retrait transmise ! En cours de traitement par l\'administrateur.');
+        await fetchCurrentUser();
+        await refetch();
         setShowWithdrawModal(false);
       } else {
         toast.error(data.error || 'Erreur lors du retrait.');
@@ -123,22 +162,22 @@ export default function WalletPage() {
         </h2>
 
         <p className="text-xs text-gray-400 font-mono mb-6">
-          Taux de conversion : 1 FCFA = 1 FCFA (Direct local)
+          Taux de conversion : 1 FCFA = 1 FCFA (Paiement direct local)
         </p>
 
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => setShowDepositModal(true)}
-            className="py-3 px-4 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg gold-glow uppercase tracking-wider hover:opacity-95 transition-all"
+            className="py-3.5 px-4 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg gold-glow uppercase tracking-wider hover:opacity-95 transition-all"
           >
-            <Plus className="w-4 h-4 stroke-[3]" /> Recharger
+            <Plus className="w-4 h-4 stroke-[3]" /> Recharger Solde
           </button>
           <button
             onClick={() => setShowWithdrawModal(true)}
-            className="py-3 px-4 rounded-xl bg-[#1A1D26] border border-white/10 hover:border-white/30 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-wider"
+            className="py-3.5 px-4 rounded-xl bg-[#1A1D26] border border-white/10 hover:border-white/30 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-wider"
           >
-            <ArrowUpRight className="w-4 h-4 text-[#F4B400]" /> Retirer
+            <ArrowUpRight className="w-4 h-4 text-[#F4B400]" /> Demander un Retrait
           </button>
         </div>
       </div>
@@ -190,6 +229,8 @@ export default function WalletPage() {
                           ? 'Mise de Jeu'
                           : item.reason === 'DEPOSIT'
                           ? 'Dépôt Wallet'
+                          : item.reason === 'REFUND'
+                          ? 'Remboursement / Restitution'
                           : 'Retrait Wallet'}
                       </h4>
                       <p className="text-[10px] font-mono text-gray-400">
@@ -222,12 +263,12 @@ export default function WalletPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-3xl w-full max-w-md border border-purple-500/30 space-y-4 animate-scale-up">
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-[#F4B400]" /> Recharger en FCFA
+              <Plus className="w-5 h-5 text-[#F4B400]" /> Recharger mon compte
             </h3>
 
             <form onSubmit={handleDepositSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-mono text-gray-400">Montant (FCFA)</label>
+                <label className="text-xs font-mono text-gray-400">Montant de recharge (FCFA)</label>
                 <input
                   type="number"
                   min={50}
@@ -238,7 +279,7 @@ export default function WalletPage() {
               </div>
 
               <div>
-                <label className="text-xs font-mono text-gray-400 mb-2 block">Moyen de paiement</label>
+                <label className="text-xs font-mono text-gray-400 mb-2 block">Passerelle de Paiement</label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -263,7 +304,7 @@ export default function WalletPage() {
                     }`}
                   >
                     <CreditCard className="w-5 h-5" />
-                    Carte Bancaire
+                    Stripe / Carte
                   </button>
 
                   <button
@@ -283,14 +324,14 @@ export default function WalletPage() {
 
               {paymentMethod === 'MOBILE_MONEY' && (
                 <div>
-                  <label className="text-xs font-mono text-gray-400">Numéro Mobile Money (OM / MTN / Wave)</label>
+                  <label className="text-xs font-mono text-gray-400">Numéro Mobile Money (Orange / MTN / Wave)</label>
                   <input
                     type="text"
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+237 6XX XXX XXX"
-                    className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1"
+                    placeholder="Ex: 699000000"
+                    className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1 focus:border-[#6C3BFF] focus:outline-none"
                   />
                 </div>
               )}
@@ -306,9 +347,9 @@ export default function WalletPage() {
                 <button
                   type="submit"
                   disabled={isDepositLoading}
-                  className="w-1/2 py-3 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs uppercase"
+                  className="w-1/2 py-3 rounded-xl gold-gradient text-[#0F1117] font-extrabold text-xs uppercase shadow-md hover:opacity-95 transition-all"
                 >
-                  {isDepositLoading ? 'Traitement...' : 'Payer maintenant'}
+                  {isDepositLoading ? 'Paiement...' : 'Payer maintenant'}
                 </button>
               </div>
             </form>
@@ -321,7 +362,7 @@ export default function WalletPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-3xl w-full max-w-md border border-purple-500/30 space-y-4 animate-scale-up">
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <ArrowUpRight className="w-5 h-5 text-[#F4B400]" /> Demande de Retrait (FCFA)
+              <ArrowUpRight className="w-5 h-5 text-[#F4B400]" /> Demande de Retrait
             </h3>
 
             <form onSubmit={handleWithdrawSubmit} className="space-y-4">
@@ -338,14 +379,14 @@ export default function WalletPage() {
               </div>
 
               <div>
-                <label className="text-xs font-mono text-gray-400">Numéro de téléphone de réception (Mobile Money)</label>
+                <label className="text-xs font-mono text-gray-400">Numéro de réception Mobile Money</label>
                 <input
                   type="text"
                   required
                   value={withdrawPhone}
                   onChange={(e) => setWithdrawPhone(e.target.value)}
-                  placeholder="+237 6XX XXX XXX"
-                  className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1"
+                  placeholder="Ex: 699000000"
+                  className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1 focus:border-[#6C3BFF] focus:outline-none"
                 />
               </div>
 
@@ -360,7 +401,7 @@ export default function WalletPage() {
                 <button
                   type="submit"
                   disabled={isWithdrawLoading || withdrawAmount > balance}
-                  className="w-1/2 py-3 rounded-xl bg-[#6C3BFF] text-white font-extrabold text-xs uppercase"
+                  className="w-1/2 py-3 rounded-xl bg-[#6C3BFF] text-white font-extrabold text-xs uppercase shadow-md hover:bg-[#5b2ee6]"
                 >
                   {isWithdrawLoading ? 'Envoi...' : 'Confirmer Retrait'}
                 </button>
