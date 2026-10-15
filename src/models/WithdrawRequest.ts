@@ -5,7 +5,11 @@ export interface IWithdrawRequestDocument extends Document {
   amount: number;
   fee: number;
   netAmount: number;
-  provider: 'NOTCHPAY' | 'STRIPE';
+  provider: 'MANUAL' | 'CODEES' | 'NOTCHPAY' | 'STRIPE';
+  // Référence de la Transaction WITHDRAWAL associée (WITH-...)
+  reference?: string;
+  // Référence du virement Mobile Money effectué manuellement par l'admin
+  payoutReference?: string;
   accountDetails: {
     phone?: string;
     accountNumber?: string;
@@ -41,7 +45,7 @@ const WithdrawRequestSchema = new Schema<IWithdrawRequestDocument>(
     },
     provider: {
       type: String,
-      enum: ['NOTCHPAY', 'STRIPE'],
+      enum: ['MANUAL', 'CODEES', 'NOTCHPAY', 'STRIPE'],
       required: true,
     },
     accountDetails: {
@@ -56,6 +60,11 @@ const WithdrawRequestSchema = new Schema<IWithdrawRequestDocument>(
       default: 'pending',
       index: true,
     },
+    reference: {
+      type: String,
+      index: true,
+    },
+    payoutReference: String,
     adminComment: String,
     processedAt: Date,
   },

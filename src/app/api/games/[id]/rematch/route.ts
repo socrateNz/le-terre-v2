@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { GameService } from '@/services/GameService';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function POST(
   req: NextRequest,
@@ -27,12 +27,12 @@ export async function POST(
       success: true,
       data: resultGame,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json(
-      { success: false, error: error.message || 'Erreur lors de la gestion de la revanche.' },
+      { success: false, error: publicErrorMessage(error, 'Erreur lors de la gestion de la revanche.') },
       { status: 400 }
     );
   }

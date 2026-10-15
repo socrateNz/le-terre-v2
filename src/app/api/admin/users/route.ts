@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { UserRepository } from '@/repositories/UserRepository';
 import { WalletRepository } from '@/repositories/WalletRepository';
 import { LedgerRepository } from '@/repositories/LedgerRepository';
-import { runTransaction } from '@/lib/db';
-import { AppError } from '@/lib/errors';
+import { runTransaction, toObjectId } from '@/lib/db';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = getAuthUser(req);
-    if (auth.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Accès réservé aux administrateurs.' }, { status: 403 });
-    }
+    await requireAdmin(req);
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || undefined;
@@ -38,7 +35,7 @@ export async function GET(req: NextRequest) {
       success: true,
       data: usersWithWallets,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
@@ -48,10 +45,7 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const auth = getAuthUser(req);
-    if (auth.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Accès réservé aux administrateurs.' }, { status: 403 });
-    }
+    await requireAdmin(req);
 
     const body = await req.json();
     const { targetUserId, action, amount, newRole } = body;
@@ -73,7 +67,7 @@ export async function PUT(req: NextRequest) {
     }
 
     if (action === 'ADJUST_BALANCE') {
-      if (typeof amount !== 'number' || amount === 0) {
+      if (!Number.isInteger(amount) || amount === 0) {
         return NextResponse.json({ success: false, error: 'Montant d\'ajustement invalide.' }, { status: 400 });
       }
 
@@ -92,7 +86,7 @@ export async function PUT(req: NextRequest) {
         await LedgerRepository.createEntry(
           {
             wallet: updatedWallet._id,
-            user: targetUserId as any,
+            user: toObjectId(targetUserId),
             type: amount > 0 ? 'CREDIT' : 'DEBIT',
             amount: Math.abs(amount),
             balanceBefore,
@@ -114,10 +108,10 @@ export async function PUT(req: NextRequest) {
     }
 
     return NextResponse.json({ success: false, error: 'Action admin non reconnue.' }, { status: 400 });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur modification utilisateur.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: publicErrorMessage(error, 'Erreur modification utilisateur.') }, { status: 400 });
   }
 }

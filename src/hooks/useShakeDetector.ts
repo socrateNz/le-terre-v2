@@ -11,6 +11,34 @@ interface UseShakeDetectorOptions {
 
 const PERMISSION_STORAGE_KEY = 'arena_motion_permission_granted';
 
+type MotionEventWithPermission = typeof DeviceMotionEvent & {
+  requestPermission?: () => Promise<PermissionState>;
+};
+
+function getInitialMotionState() {
+  const state = { isSupported: false, permissionGranted: false, needsPermission: false };
+  if (typeof window === 'undefined' || !('DeviceMotionEvent' in window)) return state;
+
+  state.isSupported = true;
+
+  // Vérifie si la permission avait déjà été accordée auparavant
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(PERMISSION_STORAGE_KEY);
+  } catch {
+    // localStorage indisponible (navigation privée)
+  }
+
+  if (saved === 'true') {
+    state.permissionGranted = true;
+  } else if (typeof (DeviceMotionEvent as MotionEventWithPermission).requestPermission === 'function') {
+    state.needsPermission = true;
+  } else {
+    state.permissionGranted = true;
+  }
+  return state;
+}
+
 export function useShakeDetector({
   onShake,
   enabled = true,
@@ -20,9 +48,10 @@ export function useShakeDetector({
   const lastShakeTime = useRef<number>(0);
   const hasAutoRequested = useRef<boolean>(false);
 
-  const [isSupported, setIsSupported] = useState<boolean>(false);
-  const [permissionGranted, setPermissionGranted] = useState<boolean>(false);
-  const [needsPermission, setNeedsPermission] = useState<boolean>(false);
+  const [initialState] = useState(getInitialMotionState);
+  const isSupported = initialState.isSupported;
+  const [permissionGranted, setPermissionGranted] = useState<boolean>(initialState.permissionGranted);
+  const [needsPermission, setNeedsPermission] = useState<boolean>(initialState.needsPermission);
   const [lastMagnitude, setLastMagnitude] = useState<number>(0);
 
   // Demande d'autorisation pour iOS 13+ enregistrée de façon permanente dans localStorage
@@ -30,10 +59,10 @@ export function useShakeDetector({
     if (
       typeof window !== 'undefined' &&
       'DeviceMotionEvent' in window &&
-      typeof (DeviceMotionEvent as any).requestPermission === 'function'
+      typeof (DeviceMotionEvent as MotionEventWithPermission).requestPermission === 'function'
     ) {
       try {
-        const response = await (DeviceMotionEvent as any).requestPermission();
+        const response = await (DeviceMotionEvent as MotionEventWithPermission).requestPermission!();
         if (response === 'granted') {
           setPermissionGranted(true);
           setNeedsPermission(false);
@@ -58,29 +87,6 @@ export function useShakeDetector({
       // ignore
     }
     return true;
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const hasMotion = 'DeviceMotionEvent' in window;
-    setIsSupported(hasMotion);
-
-    // Vérifie si la permission avait déjà été accordée auparavant
-    const savedPermission = localStorage.getItem(PERMISSION_STORAGE_KEY);
-    if (savedPermission === 'true') {
-      setPermissionGranted(true);
-      setNeedsPermission(false);
-      return;
-    }
-
-    if (hasMotion) {
-      if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
-        setNeedsPermission(true);
-      } else {
-        setPermissionGranted(true);
-      }
-    }
   }, []);
 
   // Déclencheur AUTOMATIQUE AU PREMIER TAP / CLIC SUR LA PAGE

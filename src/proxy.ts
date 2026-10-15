@@ -6,7 +6,8 @@ export function proxy(req: NextRequest) {
   const token = req.cookies.get('token')?.value;
 
   // 1. RATE LIMITER SUR LES ROUTES D'API (/api/*)
-  if (pathname.startsWith('/api')) {
+  // Les webhooks (signés) viennent des IP du prestataire : ne pas les limiter
+  if (pathname.startsWith('/api') && !pathname.startsWith('/api/webhooks')) {
     const ip = getClientIp(req);
     let rule = RATE_LIMIT_RULES.DEFAULT;
     let categoryKey = 'default';

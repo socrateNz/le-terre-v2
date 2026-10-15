@@ -15,10 +15,10 @@ import {
   Search,
   Lock,
   Globe,
-  Filter,
-  Trophy,
 } from 'lucide-react';
 import { PrivateGamePasscodeModal } from '@/components/game/PrivateGamePasscodeModal';
+import type { ApiGame, ApiGamePlayer } from '@/types';
+import { refId, refUser } from '@/lib/refs';
 
 export default function JoinGamePage() {
   const { user, balance } = useAuthStore();
@@ -28,7 +28,7 @@ export default function JoinGamePage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'WAITING_FOR_PLAYERS' | 'FINISHED'>('WAITING_FOR_PLAYERS');
   const [betFilter, setBetFilter] = useState<'ALL' | 'SMALL' | 'MEDIUM' | 'VIP'>('ALL');
   const [privateFilter, setPrivateFilter] = useState<'ALL' | 'PUBLIC' | 'PRIVATE'>('ALL');
-  const [selectedPrivateGame, setSelectedPrivateGame] = useState<any | null>(null);
+  const [selectedPrivateGame, setSelectedPrivateGame] = useState<ApiGame | null>(null);
 
   const { data: games, isLoading, refetch } = useQuery({
     queryKey: ['joinGames', search, statusFilter, betFilter, privateFilter],
@@ -55,9 +55,9 @@ export default function JoinGamePage() {
     refetchInterval: 3000,
   });
 
-  const handleGameClick = (game: any) => {
+  const handleGameClick = (game: ApiGame) => {
     const isUserInGame = game.players?.some(
-      (p: any) => (p.user?._id || p.user) === user?.id
+      (p: ApiGamePlayer) => refId(p.user) === user?.id
     );
 
     if (game.isPrivate && !isUserInGame) {
@@ -80,7 +80,7 @@ export default function JoinGamePage() {
           </Link>
           <div>
             <h1 className="text-xl font-extrabold text-white">Recherche & Liste des Arènes</h1>
-            <p className="text-xs text-gray-400">Trouvez une partie publique ou entrez le code PIN d'un salon privé</p>
+            <p className="text-xs text-gray-400">Trouvez une partie publique ou entrez le code PIN d&apos;un salon privé</p>
           </div>
         </div>
 
@@ -115,7 +115,7 @@ export default function JoinGamePage() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setStatusFilter(tab.id as any)}
+              onClick={() => setStatusFilter(tab.id as typeof statusFilter)}
               className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all ${
                 statusFilter === tab.id
                   ? 'bg-[#6C3BFF] text-white shadow-md'
@@ -167,7 +167,7 @@ export default function JoinGamePage() {
             ].map((chip) => (
               <button
                 key={chip.id}
-                onClick={() => setBetFilter(chip.id as any)}
+                onClick={() => setBetFilter(chip.id as typeof betFilter)}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
                   betFilter === chip.id
                     ? 'bg-amber-500/20 text-[#F4B400] border border-amber-500/40'
@@ -204,10 +204,10 @@ export default function JoinGamePage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {games.map((game: any) => {
+          {games.map((game: ApiGame) => {
             const hasInsufficientBalance = balance < game.bet;
             const isUserInGame = game.players?.some(
-              (p: any) => (p.user?._id || p.user) === user?.id
+              (p: ApiGamePlayer) => refId(p.user) === user?.id
             );
 
             return (
@@ -250,7 +250,7 @@ export default function JoinGamePage() {
                   </div>
 
                   <h3 className="font-extrabold text-white text-base">
-                    Hôte : {game.creator?.username || 'Joueur'}
+                    Hôte : {refUser(game.creator)?.username || 'Joueur'}
                   </h3>
 
                   <div className="flex items-center gap-4 text-xs text-gray-400 font-mono">
@@ -298,7 +298,7 @@ export default function JoinGamePage() {
           isOpen={Boolean(selectedPrivateGame)}
           onClose={() => setSelectedPrivateGame(null)}
           gameId={selectedPrivateGame._id}
-          creatorUsername={selectedPrivateGame.creator?.username}
+          creatorUsername={refUser(selectedPrivateGame.creator)?.username}
           bet={selectedPrivateGame.bet}
         />
       )}

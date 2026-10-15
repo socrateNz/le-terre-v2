@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
       success: true,
       data: userDetails,
     });
-  } catch (error: any) {
-    logger.warn(`[API] GET /api/auth/me - Auth failed/error: ${error.message}`);
+  } catch (error) {
+    logger.warn(`[API] GET /api/auth/me - Auth failed/error: ${error instanceof Error ? error.message : String(error)}`);
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }

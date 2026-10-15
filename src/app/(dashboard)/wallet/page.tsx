@@ -13,19 +13,16 @@ import {
   Smartphone,
   ShieldCheck,
   History,
-  CheckCircle2,
   Loader2,
   PhoneCall,
   X,
   Clock,
   Lock,
 } from 'lucide-react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import type { ApiTransaction, ApiLedgerEntry } from '@/types';
 
 export default function WalletPage() {
   const { user, balance, fetchCurrentUser } = useAuthStore();
-  const searchParams = useSearchParams();
-  const router = useRouter();
 
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -33,6 +30,7 @@ export default function WalletPage() {
   const [depositAmount, setDepositAmount] = useState(1000);
   const [paymentMethod, setPaymentMethod] = useState<'MOBILE_MONEY' | 'CARD'>('MOBILE_MONEY');
   const [phone, setPhone] = useState('');
+  const [operator, setOperator] = useState<'' | 'MTN' | 'ORANGE'>('');
 
   // Saisie Carte Direct In-App (Stripe)
   const [cardNumber, setCardNumber] = useState('4242 4242 4242 4242');
@@ -68,40 +66,61 @@ export default function WalletPage() {
   useEffect(() => {
     if (!activeUssdTx) return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const startedAt = Date.now();
+    const MAX_POLLING_MS = 5 * 60 * 1000;
+
+    // Polling séquentiel : une requête à la fois, arrêt après 5 minutes
+    const poll = async () => {
       try {
-        const res = await fetch(`/api/wallet/status?ref=${activeUssdTx.reference}`);
+        const res = await fetch(`/api/wallet/status?ref=${encodeURIComponent(activeUssdTx.reference)}`);
         const data = await res.json();
+        if (cancelled) return;
 
         if (data.success && data.data) {
           const status = data.data.status;
           if (status === 'completed') {
-            clearInterval(interval);
             toast.success(`🎉 Rechargement de ${activeUssdTx.amount} FCFA validé avec succès !`);
             await fetchCurrentUser();
             await refetch();
             setActiveUssdTx(null);
             setShowDepositModal(false);
-          } else if (status === 'failed' || status === 'canceled') {
-            clearInterval(interval);
+            return;
+          }
+          if (status === 'failed') {
             toast.error(data.data.message || 'Le paiement a été annulé par le client ou l\'opérateur.');
             await refetch();
             setActiveUssdTx(null);
+            return;
           }
         }
       } catch {
         // Ignorer les erreurs réseau temporaires
       }
-    }, 2000);
 
-    return () => clearInterval(interval);
+      if (cancelled) return;
+      if (Date.now() - startedAt > MAX_POLLING_MS) {
+        toast('Paiement toujours en attente. Il sera crédité dès sa validation.', { icon: '⏳' });
+        setActiveUssdTx(null);
+        return;
+      }
+      timer = setTimeout(poll, 3000);
+    };
+
+    timer = setTimeout(poll, 3000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [activeUssdTx, fetchCurrentUser, refetch]);
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (paymentMethod === 'MOBILE_MONEY' && depositAmount < 50) {
-      toast.error('Le montant minimum par Mobile Money est de 50 FCFA.');
+    if (paymentMethod === 'MOBILE_MONEY' && (depositAmount < 100 || depositAmount > 500000)) {
+      toast.error('Le montant Mobile Money doit être compris entre 100 et 500 000 FCFA.');
       return;
     }
 
@@ -119,32 +138,33 @@ export default function WalletPage() {
         body: JSON.stringify({
           amount: depositAmount,
           paymentMethod,
-          phone,
-          country: user?.country || 'CM',
-          cardToken: cardPreset,
+          ...(paymentMethod === 'MOBILE_MONEY'
+            ? { phone, ...(operator ? { operator } : {}) }
+            : { cardToken: cardPreset }),
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        if (paymentMethod === 'CARD' && data.data?.directCardCompleted) {
-          // 🚀 PAIEMENT CARTE 100% IN-APP VALIDÉ SANS REDIRECTION !
-          toast.success(`🎉 Rechargement par Carte de ${depositAmount} FCFA effectué avec succès !`);
+        const status = data.data?.status;
+        if (status === 'completed') {
+          toast.success(`🎉 Rechargement de ${depositAmount} FCFA effectué avec succès !`);
           await fetchCurrentUser();
           await refetch();
           setShowDepositModal(false);
-        } else if (paymentMethod === 'MOBILE_MONEY' && data.data?.reference) {
-          // 🚀 SUIVI USSD DIRECT MOBILE MONEY IN-APP
+        } else if (status === 'failed') {
+          toast.error(data.data?.message || 'Le paiement a été refusé.');
+          refetch();
+        } else if (data.data?.reference) {
+          // Paiement en attente : suivi en direct jusqu'à validation par code PIN
           setActiveUssdTx({
             reference: data.data.reference,
-            message: data.data.message || 'Demande USSD transmise à votre téléphone.',
+            message: data.data.message || 'Demande de paiement envoyée sur votre téléphone.',
             amount: depositAmount,
             phone: phone || user?.email || '',
           });
           refetch();
-        } else if (data.data?.redirectUrl) {
-          window.location.href = data.data.redirectUrl;
         }
       } else {
         toast.error(data.error || 'Erreur lors de l\'initialisation du dépôt.');
@@ -193,7 +213,8 @@ export default function WalletPage() {
     }
   };
 
-  const pendingTransactions = walletData?.transactions?.filter((t: any) => t.status === 'pending') || [];
+  const pendingTransactions =
+    walletData?.transactions?.filter((t: ApiTransaction) => t.status === 'pending' && t.type === 'DEPOSIT') || [];
   const ledgerEntries = walletData?.ledger || [];
 
   return (
@@ -246,7 +267,7 @@ export default function WalletPage() {
             <Clock className="w-4 h-4 animate-spin text-[#F4B400]" /> Transactions en cours de validation
           </h4>
 
-          {pendingTransactions.map((tx: any) => (
+          {pendingTransactions.map((tx: ApiTransaction) => (
             <div
               key={tx._id}
               onClick={() =>
@@ -300,11 +321,11 @@ export default function WalletPage() {
           </div>
         ) : ledgerEntries.length === 0 ? (
           <div className="glass-card p-6 rounded-2xl text-center">
-            <p className="text-xs text-gray-400">Aucune transaction validée dans l'historique.</p>
+            <p className="text-xs text-gray-400">Aucune transaction validée dans l&apos;historique.</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {ledgerEntries.map((item: any) => {
+            {ledgerEntries.map((item: ApiLedgerEntry) => {
               const isCredit = item.type === 'CREDIT';
 
               return (
@@ -372,7 +393,8 @@ export default function WalletPage() {
                 <label className="text-xs font-mono text-gray-400">Montant de recharge (FCFA)</label>
                 <input
                   type="number"
-                  min={paymentMethod === 'CARD' ? 350 : 50}
+                  min={paymentMethod === 'CARD' ? 350 : 100}
+                  max={500000}
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(Number(e.target.value))}
                   className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-lg font-mono font-bold text-[#F4B400] text-center mt-1 focus:outline-none focus:border-[#6C3BFF]"
@@ -386,7 +408,7 @@ export default function WalletPage() {
                     type="button"
                     onClick={() => {
                       setPaymentMethod('MOBILE_MONEY');
-                      if (depositAmount < 50) setDepositAmount(50);
+                      if (depositAmount < 100) setDepositAmount(100);
                     }}
                     className={`p-3 rounded-xl border flex flex-col items-center gap-1 transition-all text-xs font-bold ${
                       paymentMethod === 'MOBILE_MONEY'
@@ -395,7 +417,7 @@ export default function WalletPage() {
                     }`}
                   >
                     <Smartphone className="w-5 h-5" />
-                    Mobile Money (OM/MTN/Wave)
+                    Mobile Money (MTN / Orange)
                   </button>
 
                   <button
@@ -466,7 +488,7 @@ export default function WalletPage() {
                     <label className="text-[10px] font-mono text-gray-400">Type de Carte</label>
                     <select
                       value={cardPreset}
-                      onChange={(e) => setCardPreset(e.target.value as any)}
+                      onChange={(e) => setCardPreset(e.target.value as typeof cardPreset)}
                       className="w-full bg-[#1A1D26] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white mt-1 focus:outline-none"
                     >
                       <option value="tok_visa">Visa International (Valide)</option>
@@ -479,15 +501,26 @@ export default function WalletPage() {
 
               {paymentMethod === 'MOBILE_MONEY' && (
                 <div>
-                  <label className="text-xs font-mono text-gray-400">Numéro Mobile Money (OM / MTN / Wave)</label>
+                  <label className="text-xs font-mono text-gray-400">Numéro Mobile Money (MTN / Orange)</label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="numeric"
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Ex: 699000000"
+                    placeholder="Ex: 677000000"
                     className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1 focus:border-[#6C3BFF] focus:outline-none"
                   />
+                  <label className="text-xs font-mono text-gray-400 mt-3 block">Opérateur</label>
+                  <select
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value as '' | 'MTN' | 'ORANGE')}
+                    className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1 focus:border-[#6C3BFF] focus:outline-none"
+                  >
+                    <option value="">Détection automatique</option>
+                    <option value="MTN">MTN Mobile Money</option>
+                    <option value="ORANGE">Orange Money</option>
+                  </select>
                 </div>
               )}
 
@@ -546,7 +579,7 @@ export default function WalletPage() {
                 <Smartphone className="w-4 h-4 text-[#F4B400]" /> Saisissez votre Code PIN Mobile Money
               </div>
               <p className="text-[11px] text-gray-400 leading-relaxed font-mono">
-                Une alerte USSD a été envoyée sur votre téléphone. Composez votre code secret pour valider le débit. Si vous annulez, le suivi s'arrêtera immédiatement.
+                Une alerte USSD a été envoyée sur votre téléphone. Composez votre code secret pour valider le débit. Si vous annulez, le suivi s&apos;arrêtera immédiatement.
               </p>
             </div>
 

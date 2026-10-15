@@ -15,7 +15,7 @@ declare global {
   var mongooseCache: MongooseCache | undefined;
 }
 
-let cached: MongooseCache = global.mongooseCache || { conn: null, promise: null };
+const cached: MongooseCache = global.mongooseCache || { conn: null, promise: null };
 
 if (!global.mongooseCache) {
   global.mongooseCache = cached;
@@ -75,4 +75,9 @@ export async function runTransaction<T>(
   } finally {
     session.endSession();
   }
+}
+
+/** Convertit un identifiant string en ObjectId Mongoose. */
+export function toObjectId(id: string | mongoose.Types.ObjectId): mongoose.Types.ObjectId {
+  return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
 }

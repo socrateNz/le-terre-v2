@@ -38,7 +38,7 @@ export const GamePlayerSchema = new Schema<IGamePlayerDocument>(
   }
 );
 
-delete (mongoose.models as any).GamePlayer;
+delete (mongoose.models as Record<string, unknown>).GamePlayer;
 
 export const GamePlayer: Model<IGamePlayerDocument> =
   mongoose.models.GamePlayer ||

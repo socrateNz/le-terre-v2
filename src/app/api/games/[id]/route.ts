@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GameService } from '@/services/GameService';
 
 import { getAuthUser } from '@/lib/auth';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function GET(
   req: NextRequest,
@@ -18,7 +18,7 @@ export async function GET(
       success: true,
       data: game,
     });
-  } catch (error: any) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erreur détails partie.' }, { status: 400 });
   }
 }
@@ -41,12 +41,12 @@ export async function DELETE(
       data: cancelledGame,
       message: 'Partie annulée avec succès et mises remboursées.',
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json(
-      { success: false, error: error.message || 'Impossible d’annuler cette partie.' },
+      { success: false, error: publicErrorMessage(error, 'Impossible d’annuler cette partie.') },
       { status: 400 }
     );
   }

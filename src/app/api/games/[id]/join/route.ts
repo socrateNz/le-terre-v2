@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { GameService } from '@/services/GameService';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function POST(
   req: NextRequest,
@@ -26,10 +26,10 @@ export async function POST(
       data: game,
       message: 'Vous avez rejoint la partie avec succès !',
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Impossible de rejoindre la partie.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: publicErrorMessage(error, 'Impossible de rejoindre la partie.') }, { status: 400 });
   }
 }

@@ -33,6 +33,7 @@ const WithdrawRequestSchema = new mongoose.Schema({
   fee: Number,
   netAmount: Number,
   provider: String,
+  reference: String,
   accountDetails: Object,
   status: String,
   adminComment: String,
@@ -64,9 +65,7 @@ async function fixMissingWithdrawals() {
 
       // Vérifier si un WithdrawRequest existe déjà pour cet utilisateur et montant
       const existingReq = await WithdrawRequest.findOne({
-        user: tx.user,
-        amount: tx.amount,
-        status: 'pending',
+        $or: [{ reference: tx.paymentReference }, { user: tx.user, amount: tx.amount, status: 'pending' }],
       });
 
       if (!existingReq) {
@@ -75,7 +74,8 @@ async function fixMissingWithdrawals() {
           amount: tx.amount,
           fee: 0,
           netAmount: tx.amount,
-          provider: 'NOTCHPAY',
+          provider: 'MANUAL',
+          reference: tx.paymentReference,
           accountDetails: {
             phone,
           },

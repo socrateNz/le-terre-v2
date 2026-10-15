@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { verifyToken, JwtPayload } from './jwt';
-import { UnauthorizedError } from './errors';
+import { UnauthorizedError, ForbiddenError } from './errors';
+import { UserRepository } from '@/repositories/UserRepository';
 
 export function getAuthUser(req: NextRequest): JwtPayload {
   const tokenFromCookie = req.cookies.get('token')?.value;
@@ -21,4 +22,17 @@ export function getAuthUser(req: NextRequest): JwtPayload {
   }
 
   return decoded;
+}
+
+/**
+ * Vérifie le rôle ADMIN en base (et non dans le JWT) : un admin rétrogradé
+ * perd immédiatement l'accès, sans attendre l'expiration de son token.
+ */
+export async function requireAdmin(req: NextRequest): Promise<JwtPayload> {
+  const auth = getAuthUser(req);
+  const user = await UserRepository.findById(auth.userId);
+  if (!user || user.role !== 'ADMIN') {
+    throw new ForbiddenError('Accès réservé aux administrateurs.');
+  }
+  return auth;
 }

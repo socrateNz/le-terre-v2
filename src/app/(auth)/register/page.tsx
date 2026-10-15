@@ -57,12 +57,12 @@ export default function RegisterPage() {
           />
         </div>
         <h1 className="text-2xl font-extrabold text-white">Inscription</h1>
-        <p className="text-xs text-gray-400 mt-1">Rejoignez l'arène de jeu Le Terre</p>
+        <p className="text-xs text-gray-400 mt-1">Rejoignez l&apos;arène de jeu Le Terre</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
-          <label className="text-xs font-mono text-gray-400">Nom d'utilisateur</label>
+          <label className="text-xs font-mono text-gray-400">Nom d&apos;utilisateur</label>
           <div className="relative">
             <UserIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
@@ -116,7 +116,7 @@ export default function RegisterPage() {
               className="w-full bg-[#1A1D26] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-[#6C3BFF] transition-all"
             >
               <option value="CM">Cameroun 🇨🇲</option>
-              <option value="CI">Côte d'Ivoire 🇨🇮</option>
+              <option value="CI">Côte d&apos;Ivoire 🇨🇮</option>
               <option value="SN">Sénégal 🇸🇳</option>
               <option value="FR">France 🇫🇷</option>
               <option value="OTHER">Autre</option>

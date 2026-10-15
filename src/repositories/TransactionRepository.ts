@@ -30,6 +30,30 @@ export class TransactionRepository {
     return Transaction.find({ user: userId }).sort({ createdAt: -1 }).limit(limit).exec();
   }
 
+  /**
+   * Passe atomiquement une transaction de 'pending' à son statut final.
+   * Retourne null si elle n'était plus en attente : un seul appelant peut donc la régler.
+   */
+  public static async claimPending(
+    reference: string,
+    type: ITransactionDocument['type'],
+    status: 'completed' | 'failed',
+    session?: mongoose.ClientSession
+  ): Promise<ITransactionDocument | null> {
+    await connectDB();
+    const opts = session ? { session, returnDocument: 'after' as const } : { returnDocument: 'after' as const };
+    return Transaction.findOneAndUpdate(
+      { paymentReference: reference, type, status: 'pending' },
+      { status },
+      opts
+    ).exec();
+  }
+
+  public static async setProviderReference(reference: string, providerReference: string): Promise<void> {
+    await connectDB();
+    await Transaction.updateOne({ paymentReference: reference }, { providerReference }).exec();
+  }
+
   public static async updateStatus(
     reference: string,
     status: 'completed' | 'failed',

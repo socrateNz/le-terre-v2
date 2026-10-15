@@ -91,7 +91,7 @@ export function checkRateLimit(
         headers: {
           'Retry-After': resetSeconds.toString(),
           'X-RateLimit-Limit': config.limit.toString(),
-          'X-RateLimit-[#6C3BFF]': '0',
+          'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': Math.ceil(current.resetTime / 1000).toString(),
         },
       }

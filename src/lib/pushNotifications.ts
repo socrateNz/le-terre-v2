@@ -132,8 +132,9 @@ export class PushNotificationManager {
 
   /** ❌ Retrait rejeté par l'admin */
   public static notifyWithdrawalRejected(amount: number, reason?: string) {
+    const reasonText = reason ? ` Motif : ${reason}.` : '';
     this.showNotification('❌ Demande de Retrait Rejetée', {
-      body: `Votre demande de ${amount.toLocaleString()} FCFA a été rejetée. Les crédits ont été restitués sur votre compte.`,
+      body: `Votre demande de ${amount.toLocaleString()} FCFA a été rejetée.${reasonText} Les crédits ont été restitués sur votre compte.`,
       url: '/wallet',
       tag: `withdraw-rejected-${Date.now()}`,
     });

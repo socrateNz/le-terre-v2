@@ -153,7 +153,7 @@ export function SharedDiceArena({
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current text-[#FFE543]" />
-                  🎲 Lancer les Dés dans l'Arène !
+                  🎲 Lancer les Dés dans l&apos;Arène !
                 </>
               )}
             </motion.button>

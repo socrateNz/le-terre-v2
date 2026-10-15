@@ -39,7 +39,7 @@ export class WalletRepository {
     await connectDB();
     const opts = session ? { session, returnDocument: 'after' as const } : { returnDocument: 'after' as const };
 
-    const filter: any = { user: userId };
+    const filter: Record<string, unknown> = { user: userId };
     if (amountDelta < 0) {
       filter.balance = { $gte: Math.abs(amountDelta) };
     }

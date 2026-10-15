@@ -1,10 +1,8 @@
 import { UserRepository } from '@/repositories/UserRepository';
 import { WalletRepository } from '@/repositories/WalletRepository';
-import { LedgerRepository } from '@/repositories/LedgerRepository';
 import { runTransaction } from '@/lib/db';
-import { signToken, JwtPayload } from '@/lib/jwt';
+import { signToken } from '@/lib/jwt';
 import { ValidationError, UnauthorizedError, NotFoundError } from '@/lib/errors';
-import { WALLET_CONFIG } from '@/config/wallet';
 import bcrypt from 'bcryptjs';
 
 export interface RegisterInput {

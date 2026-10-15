@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, BellOff, Check, X } from 'lucide-react';
+import { Bell, Check, X } from 'lucide-react';
 import { PushNotificationManager } from '@/lib/pushNotifications';
 import toast from 'react-hot-toast';
 
 export function NotificationPrompt() {
-  const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [permission, setPermission] = useState<NotificationPermission>(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -14,7 +16,6 @@ export function NotificationPrompt() {
     PushNotificationManager.registerServiceWorker();
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPermission(Notification.permission);
       if (Notification.permission === 'default') {
         // Afficher la bannière de demande si pas encore répondu
         const timer = setTimeout(() => setIsVisible(true), 3000);
@@ -53,7 +54,7 @@ export function NotificationPrompt() {
         <div className="flex-1">
           <h4 className="font-bold text-white text-xs">Activer les Notifications Push 🔔</h4>
           <p className="text-[11px] text-gray-300 mt-0.5 leading-snug">
-            Recevez des alerte en temps réel lorsque c'est votre tour de jouer, en cas de victoire ou lors de la validation de vos retraits !
+            Recevez des alerte en temps réel lorsque c&apos;est votre tour de jouer, en cas de victoire ou lors de la validation de vos retraits !
           </p>
 
           <div className="flex items-center gap-2 mt-3">

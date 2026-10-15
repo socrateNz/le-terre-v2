@@ -75,7 +75,7 @@ export interface IGame {
 }
 
 export type TransactionType = 'CREDIT_TEST' | 'DEPOSIT' | 'WITHDRAWAL' | 'BET' | 'WIN';
-export type PaymentProvider = 'NOTCHPAY' | 'STRIPE' | 'TEST_CREDIT';
+export type PaymentProvider = 'CODEES' | 'STRIPE' | 'MANUAL' | 'NOTCHPAY' | 'TEST_CREDIT';
 export type PaymentMethod = 'MOBILE_MONEY' | 'CARD' | 'TEST_CREDIT';
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
@@ -123,9 +123,76 @@ export interface INotification {
   createdAt: Date;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+}
+
+/* ---- Formes JSON renvoyées par l'API au client (ids en string, références peuplées ou non) ---- */
+
+export type Ref<T> = T | string;
+
+export interface ApiUserRef {
+  _id: string;
+  username?: string;
+  email?: string;
+  avatar?: string;
+  country?: string;
+  role?: UserRole;
+}
+
+export interface ApiGamePlayer {
+  _id?: string;
+  user: Ref<ApiUserRef>;
+  diceOne: number;
+  diceTwo: number;
+  total: number;
+  joinedAt?: string;
+}
+
+export interface ApiGame {
+  _id: string;
+  creator: Ref<ApiUserRef>;
+  maxPlayers: number;
+  bet: number;
+  status: GameStatus;
+  isPrivate?: boolean;
+  players: ApiGamePlayer[];
+  winner?: Ref<ApiUserRef> | null;
+  rematchRequestedBy?: Ref<ApiUserRef> | null;
+  nextGameId?: Ref<{ _id: string }> | null;
+  totalPot: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ApiTransaction extends Omit<ITransaction, 'createdAt' | 'user'> {
+  user: string;
+  createdAt: string;
+}
+
+export interface ApiLedgerEntry extends Omit<IWalletLedger, 'createdAt' | 'wallet' | 'user'> {
+  wallet: string;
+  user: string;
+  createdAt: string;
+}
+
+export interface ApiWithdrawRequest extends Omit<IWithdrawRequest, 'createdAt' | 'processedAt' | 'user'> {
+  user: Ref<ApiUserRef> | null;
+  payoutReference?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
+export interface ApiAdminUser {
+  _id: string;
+  username: string;
+  email: string;
+  avatar?: string;
+  country?: string;
+  role: UserRole;
+  balance: number;
+  createdAt: string;
 }

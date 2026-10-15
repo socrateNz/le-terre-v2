@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { ZodError } from 'zod';
+import { requireAdmin } from '@/lib/auth';
 import { connectDB } from '@/lib/db';
 import { WithdrawRequest } from '@/models/WithdrawRequest';
-import { WalletRepository } from '@/repositories/WalletRepository';
-import { LedgerRepository } from '@/repositories/LedgerRepository';
-import { NotchPayClient } from '@/lib/notchpay';
-import { runTransaction } from '@/lib/db';
+import { WalletService } from '@/services/WalletService';
+import { adminWithdrawalActionSchema } from '@/schemas/wallet';
 import { AppError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = getAuthUser(req);
-    if (auth.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Accès réservé aux administrateurs.' }, { status: 403 });
-    }
+    await requireAdmin(req);
 
     await connectDB();
     const requests = await WithdrawRequest.find()
@@ -25,7 +22,7 @@ export async function GET(req: NextRequest) {
       success: true,
       data: requests,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
@@ -35,108 +32,36 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = getAuthUser(req);
-    if (auth.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Accès réservé aux administrateurs.' }, { status: 403 });
+    const auth = await requireAdmin(req);
+    const { requestId, action, adminComment, payoutReference } = adminWithdrawalActionSchema.parse(await req.json());
+
+    if (action === 'APPROVE' && !payoutReference) {
+      return NextResponse.json(
+        { success: false, error: 'Indiquez la référence du virement Mobile Money effectué.' },
+        { status: 400 }
+      );
     }
 
-    const body = await req.json();
-    const { requestId, action, adminComment } = body;
+    const updatedRequest = await WalletService.processWithdrawal(requestId, action, { adminComment, payoutReference });
 
-    console.log(`[ADMIN_WITHDRAWAL_LOG] 📩 Action reçue: ${action} pour la demande ID: ${requestId}`);
-
-    if (!requestId || !['APPROVE', 'REJECT'].includes(action)) {
-      return NextResponse.json({ success: false, error: 'Paramètres invalides (requestId, action=APPROVE|REJECT).' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    let transferMessage = '';
-
-    const updatedRequest = await runTransaction(async (session) => {
-      const withdrawReq = await WithdrawRequest.findById(requestId).populate('user').session(session);
-      if (!withdrawReq) {
-        throw new AppError('Demande de retrait introuvable.', 404);
-      }
-
-      if (withdrawReq.status !== 'pending') {
-        throw new AppError('Cette demande a déjà été traitée.', 400);
-      }
-
-      const userId = (withdrawReq.user._id || withdrawReq.user).toString();
-
-      if (action === 'APPROVE') {
-        console.log(`[ADMIN_WITHDRAWAL_LOG] Approbation du retrait de ${withdrawReq.amount} FCFA vers ${withdrawReq.accountDetails?.phone}...`);
-
-        // 1. Déclenchement impératif du virement NotchPay AVANT toute validation
-        if (withdrawReq.provider === 'NOTCHPAY' && withdrawReq.accountDetails?.phone) {
-          const transferRes = await NotchPayClient.sendTransfer({
-            amount: withdrawReq.amount,
-            phone: withdrawReq.accountDetails.phone,
-            reference: `WITH-${withdrawReq._id}`,
-            recipientName: (withdrawReq.user as any)?.username,
-          });
-
-          console.log(`[ADMIN_WITHDRAWAL_LOG] Résultat Virement NotchPay: success=${transferRes.success}, message="${transferRes.message}"`);
-
-          // Si le virement NotchPay échoue (ex: "This merchant could not transfer funds"), ON ANNULE L'ACTION
-          if (!transferRes.success) {
-            throw new AppError(`Échec du virement NotchPay : ${transferRes.message}`, 400);
-          }
-
-          transferMessage = transferRes.message;
-        }
-
-        // 2. Si et SEULEMENT SI le virement est validé par NotchPay, on marque la demande comme approuvée
-        withdrawReq.status = 'approved';
-        withdrawReq.adminComment = adminComment || transferMessage || 'Retrait approuvé et virement Mobile Money exécuté avec succès.';
-        withdrawReq.processedAt = new Date();
-        await withdrawReq.save({ session });
-      } else if (action === 'REJECT') {
-        console.log(`[ADMIN_WITHDRAWAL_LOG] Rejet du retrait de ${withdrawReq.amount} FCFA. Restitution des fonds à l'utilisateur ${userId}...`);
-
-        const wallet = await WalletRepository.findByUserId(userId, session);
-        if (wallet) {
-          const balanceBefore = wallet.balance;
-          const updatedWallet = await WalletRepository.updateBalance(userId, withdrawReq.amount, session);
-          if (updatedWallet) {
-            await LedgerRepository.createEntry(
-              {
-                wallet: updatedWallet._id,
-                user: userId as any,
-                type: 'CREDIT',
-                amount: withdrawReq.amount,
-                balanceBefore,
-                balanceAfter: updatedWallet.balance,
-                reference: `REFUND_WITHDRAW_${requestId}`,
-                reason: 'REFUND',
-              },
-              session
-            );
-          }
-        }
-
-        withdrawReq.status = 'rejected';
-        withdrawReq.adminComment = adminComment || 'Demande de retrait rejetée par l\'administrateur';
-        withdrawReq.processedAt = new Date();
-        await withdrawReq.save({ session });
-      }
-
-      return withdrawReq;
-    });
+    logger.info(`[ADMIN_WITHDRAWAL] ${action} demande ${requestId} par l'admin ${auth.userId}`);
 
     return NextResponse.json({
       success: true,
       data: updatedRequest,
-      message: action === 'APPROVE'
-        ? `Retrait approuvé et virement Mobile Money exécuté avec succès !`
-        : 'Demande de retrait rejetée et crédits restitués au joueur.',
+      message:
+        action === 'APPROVE'
+          ? 'Retrait marqué comme payé.'
+          : 'Demande de retrait rejetée et fonds restitués au joueur.',
     });
-  } catch (error: any) {
-    console.error(`[ADMIN_WITHDRAWAL_LOG] ❌ Erreur / Annulation retrait:`, error);
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur traitement retrait.' }, { status: 400 });
+    if (error instanceof ZodError) {
+      return NextResponse.json({ success: false, error: error.issues[0]?.message || 'Paramètres invalides.' }, { status: 400 });
+    }
+    logger.error('[ADMIN_WITHDRAWAL] Erreur traitement retrait', error instanceof Error ? error.message : error);
+    return NextResponse.json({ success: false, error: 'Erreur traitement retrait.' }, { status: 500 });
   }
 }

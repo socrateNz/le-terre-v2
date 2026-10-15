@@ -2,9 +2,19 @@ import { GameRepository } from '@/repositories/GameRepository';
 import { WalletRepository } from '@/repositories/WalletRepository';
 import { LedgerRepository } from '@/repositories/LedgerRepository';
 import { GameEngine } from '@/lib/gameEngine/GameEngine';
-import { runTransaction } from '@/lib/db';
-import { ValidationError, NotFoundError, UnauthorizedError } from '@/lib/errors';
+import { runTransaction, toObjectId } from '@/lib/db';
+import { ValidationError, NotFoundError, UnauthorizedError, ForbiddenError } from '@/lib/errors';
 import { GAME_CONFIG } from '@/config/game';
+import type { IGameDocument } from '@/models/Game';
+import type { IGamePlayerDocument } from '@/models/GamePlayer';
+
+/** Vrai si l'utilisateur est l'un des joueurs de la partie (champ `user` peuplé ou non). */
+function isParticipant(game: IGameDocument, userId: string): boolean {
+  return game.players.some((p) => {
+    const user = p.user as unknown as { _id?: unknown } | null;
+    return String(user?._id ?? user) === userId;
+  });
+}
 
 export interface CreateGameInput {
   userId: string;
@@ -46,7 +56,7 @@ export class GameService {
       // 2. Création de la partie
       const game = await GameRepository.createGame(
         {
-          creator: userId as any,
+          creator: toObjectId(userId),
           maxPlayers,
           bet,
           isPrivate,
@@ -54,12 +64,12 @@ export class GameService {
           status: maxPlayers === 1 ? 'READY' : 'WAITING_FOR_PLAYERS',
           players: [
             {
-              user: userId as any,
+              user: toObjectId(userId),
               diceOne: 0,
               diceTwo: 0,
               total: 0,
               joinedAt: new Date(),
-            } as any,
+            } as unknown as IGamePlayerDocument,
           ],
           totalPot: bet,
         },
@@ -69,7 +79,7 @@ export class GameService {
       await LedgerRepository.createEntry(
         {
           wallet: updatedWallet._id,
-          user: userId as any,
+          user: toObjectId(userId),
           type: 'DEBIT',
           amount: bet,
           balanceBefore,
@@ -127,12 +137,12 @@ export class GameService {
       }
 
       game.players.push({
-        user: userId as any,
+        user: toObjectId(userId),
         diceOne: 0,
         diceTwo: 0,
         total: 0,
         joinedAt: new Date(),
-      } as any);
+      } as unknown as IGamePlayerDocument);
 
       game.totalPot += game.bet;
 
@@ -145,7 +155,7 @@ export class GameService {
       await LedgerRepository.createEntry(
         {
           wallet: updatedWallet._id,
-          user: userId as any,
+          user: toObjectId(userId),
           type: 'DEBIT',
           amount: game.bet,
           balanceBefore,
@@ -192,7 +202,7 @@ export class GameService {
       }
 
       if (result.winnerUserId) {
-        game.winner = result.winnerUserId as any;
+        game.winner = toObjectId(result.winnerUserId);
         game.status = 'PAYOUT';
 
         const winnerWallet = await WalletRepository.findByUserId(result.winnerUserId, session);
@@ -208,7 +218,7 @@ export class GameService {
             await LedgerRepository.createEntry(
               {
                 wallet: updatedWinnerWallet._id,
-                user: result.winnerUserId as any,
+                user: toObjectId(result.winnerUserId),
                 type: 'CREDIT',
                 amount: result.payout.winnerPayout,
                 balanceBefore,
@@ -235,7 +245,7 @@ export class GameService {
               await LedgerRepository.createEntry(
                 {
                   wallet: updatedW._id,
-                  user: pId as any,
+                  user: toObjectId(pId),
                   type: 'CREDIT',
                   amount: game.bet,
                   balanceBefore,
@@ -323,7 +333,7 @@ export class GameService {
                 await LedgerRepository.createEntry(
                   {
                     wallet: updatedW._id,
-                    user: pId as any,
+                    user: toObjectId(pId),
                     type: 'CREDIT',
                     amount: game.bet,
                     balanceBefore,
@@ -339,7 +349,7 @@ export class GameService {
           }
         } else {
           const winnerUserId = winners[0];
-          game.winner = winnerUserId as any;
+          game.winner = toObjectId(winnerUserId);
           game.status = 'FINISHED';
 
           const winnerWallet = await WalletRepository.findByUserId(winnerUserId, session);
@@ -351,7 +361,7 @@ export class GameService {
               await LedgerRepository.createEntry(
                 {
                   wallet: updatedWinnerWallet._id,
-                  user: winnerUserId as any,
+                  user: toObjectId(winnerUserId),
                   type: 'CREDIT',
                   amount: game.totalPot,
                   balanceBefore,
@@ -402,7 +412,7 @@ export class GameService {
             await LedgerRepository.createEntry(
               {
                 wallet: updatedW._id,
-                user: pId as any,
+                user: toObjectId(pId),
                 type: 'CREDIT',
                 amount: game.bet,
                 balanceBefore,
@@ -427,7 +437,10 @@ export class GameService {
       if (!game) {
         throw new NotFoundError('Partie introuvable.');
       }
-      game.rematchRequestedBy = userId as any;
+      if (!isParticipant(game, userId)) {
+        throw new ForbiddenError('Vous ne faites pas partie de cette partie.');
+      }
+      game.rematchRequestedBy = toObjectId(userId);
       await game.save({ session });
       return game;
     });
@@ -438,6 +451,9 @@ export class GameService {
       const oldGame = await GameRepository.findById(gameId, session);
       if (!oldGame) {
         throw new NotFoundError('Partie introuvable.');
+      }
+      if (!isParticipant(oldGame, userId)) {
+        throw new ForbiddenError('Vous ne faites pas partie de cette partie.');
       }
 
       const newGame = await this.createGame({
@@ -462,6 +478,9 @@ export class GameService {
       const game = await GameRepository.findById(gameId, session);
       if (!game) {
         throw new NotFoundError('Partie introuvable.');
+      }
+      if (!isParticipant(game, userId)) {
+        throw new ForbiddenError('Vous ne faites pas partie de cette partie.');
       }
       game.rematchRequestedBy = undefined;
       await game.save({ session });

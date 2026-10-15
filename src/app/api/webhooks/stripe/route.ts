@@ -1,55 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TransactionRepository } from '@/repositories/TransactionRepository';
-import { WalletRepository } from '@/repositories/WalletRepository';
-import { LedgerRepository } from '@/repositories/LedgerRepository';
-import { runTransaction } from '@/lib/db';
+import { WalletService } from '@/services/WalletService';
+import { StripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 
+/**
+ * Webhook Stripe : la signature est obligatoire, et le contenu de l'événement ne sert qu'à
+ * retrouver la transaction. Le montant crédité est toujours celui enregistré en base, et le
+ * statut est re-vérifié auprès de l'API Stripe avant tout crédit.
+ */
 export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+
+  if (!StripeClient.verifyWebhookSignature(rawBody, req.headers.get('stripe-signature'))) {
+    return NextResponse.json({ error: 'Signature invalide' }, { status: 400 });
+  }
+
   try {
-    const payload = await req.json();
+    const event = JSON.parse(rawBody);
+    const object = event.data?.object || {};
 
-    if (payload.type === 'checkout.session.completed') {
-      const sessionData = payload.data.object;
-      const reference = sessionData.client_reference_id;
-      const amount = sessionData.amount_total / 100;
+    let reference: string | undefined;
+    if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
+      reference = object.metadata?.reference;
+    } else if (event.type === 'checkout.session.completed') {
+      reference = object.client_reference_id;
+    }
 
-      if (reference) {
-        await runTransaction(async (session) => {
-          const tx = await TransactionRepository.findByReference(reference, session);
-          if (!tx || tx.status === 'completed') {
-            return;
-          }
-
-          const walletBefore = await WalletRepository.findByUserId(tx.user.toString(), session);
-          const balanceBefore = walletBefore?.balance || 0;
-
-          const updatedWallet = await WalletRepository.updateBalance(tx.user.toString(), amount, session);
-          if (updatedWallet) {
-            await TransactionRepository.updateStatus(reference, 'completed', session);
-
-            await LedgerRepository.createEntry(
-              {
-                wallet: updatedWallet._id,
-                user: tx.user,
-                type: 'CREDIT',
-                amount,
-                balanceBefore,
-                balanceAfter: updatedWallet.balance,
-                reference,
-                reason: 'DEPOSIT',
-                transaction: tx._id,
-              },
-              session
-            );
-          }
-        });
+    if (reference) {
+      const tx = await TransactionRepository.findByReference(reference);
+      if (tx && tx.type === 'DEPOSIT' && tx.provider === 'STRIPE') {
+        if (!tx.providerReference && object.id) {
+          tx.providerReference = object.id;
+          await tx.save();
+        }
+        await WalletService.verifyAndSettleDeposit(tx);
       }
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
-    logger.error('Webhook Stripe Exception', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    logger.error('Webhook Stripe Exception', error instanceof Error ? error.message : error);
+    // 500 : Stripe renverra l'événement plus tard
+    return NextResponse.json({ error: 'Erreur de traitement' }, { status: 500 });
   }
 }

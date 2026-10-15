@@ -8,19 +8,16 @@ import { useRouter } from 'next/navigation';
 import {
   Plus,
   Dices,
-  Trophy,
-  TrendingUp,
   Wallet,
   ArrowUpRight,
   Shield,
   Search,
   Lock,
   Globe,
-  Filter,
-  Users,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { PrivateGamePasscodeModal } from '@/components/game/PrivateGamePasscodeModal';
+import type { ApiGame, ApiGamePlayer } from '@/types';
+import { refId, refUser } from '@/lib/refs';
 
 export default function DashboardPage() {
   const { user, balance } = useAuthStore();
@@ -31,7 +28,7 @@ export default function DashboardPage() {
   const [selectedPrivateFilter, setSelectedPrivateFilter] = useState<'ALL' | 'PUBLIC' | 'PRIVATE'>('ALL');
 
   // Modal de déverrouillage de salon privé
-  const [selectedPrivateGame, setSelectedPrivateGame] = useState<any | null>(null);
+  const [selectedPrivateGame, setSelectedPrivateGame] = useState<ApiGame | null>(null);
 
   const { data: gamesData, isLoading: isGamesLoading } = useQuery({
     queryKey: ['activeGames', search, selectedBetRange, selectedPrivateFilter],
@@ -57,9 +54,9 @@ export default function DashboardPage() {
     refetchInterval: 3000,
   });
 
-  const handleGameClick = (game: any) => {
+  const handleGameClick = (game: ApiGame) => {
     const isUserInGame = game.players?.some(
-      (p: any) => (p.user?._id || p.user) === user?.id
+      (p: ApiGamePlayer) => refId(p.user) === user?.id
     );
 
     if (game.isPrivate && !isUserInGame) {
@@ -212,7 +209,7 @@ export default function DashboardPage() {
               ].map((chip) => (
                 <button
                   key={chip.id}
-                  onClick={() => setSelectedBetRange(chip.id as any)}
+                  onClick={() => setSelectedBetRange(chip.id as typeof selectedBetRange)}
                   className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
                     selectedBetRange === chip.id
                       ? 'bg-amber-500/20 text-[#F4B400] border border-amber-500/40'
@@ -247,9 +244,9 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {gamesData.map((game: any) => {
+            {gamesData.map((game: ApiGame) => {
               const isUserInGame = game.players?.some(
-                (p: any) => (p.user?._id || p.user) === user?.id
+                (p: ApiGamePlayer) => refId(p.user) === user?.id
               );
 
               return (
@@ -273,14 +270,14 @@ export default function DashboardPage() {
                       {game.isPrivate ? (
                         <Lock className="w-4 h-4 text-[#F4B400]" />
                       ) : (
-                        game.creator?.username?.substring(0, 2).toUpperCase() || 'LT'
+                        refUser(game.creator)?.username?.substring(0, 2).toUpperCase() || 'LT'
                       )}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-white text-xs">
-                          {game.creator?.username || 'Joueur'}
+                          {refUser(game.creator)?.username || 'Joueur'}
                         </h4>
                         {game.isPrivate && (
                           <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 text-[9px] font-mono font-extrabold border border-yellow-500/40">
@@ -331,7 +328,7 @@ export default function DashboardPage() {
           isOpen={Boolean(selectedPrivateGame)}
           onClose={() => setSelectedPrivateGame(null)}
           gameId={selectedPrivateGame._id}
-          creatorUsername={selectedPrivateGame.creator?.username}
+          creatorUsername={refUser(selectedPrivateGame.creator)?.username}
           bet={selectedPrivateGame.bet}
         />
       )}

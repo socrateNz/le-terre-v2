@@ -1,6 +1,6 @@
 // Service Worker Le Terre - Web Push Notifications & Offline Support
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   console.log('[SW] Service Worker Le Terre installé.');
   self.skipWaiting();
 });

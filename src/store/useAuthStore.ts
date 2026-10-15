@@ -47,8 +47,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         console.warn('[AuthStore] Auth check returned unauthenticated status:', data.error);
         set({ user: null, balance: 0, isAuthenticated: false, isLoading: false });
       }
-    } catch (err: any) {
-      console.error('[AuthStore] Error fetching current user:', err?.message || err);
+    } catch (err) {
+      console.error('[AuthStore] Error fetching current user:', err instanceof Error ? err.message : err);
       set({ user: null, balance: 0, isAuthenticated: false, isLoading: false });
     }
   },

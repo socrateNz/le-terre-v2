@@ -10,22 +10,14 @@ import {
   ArrowLeft,
   Dices,
   Trophy,
-  Users,
-  Play,
-  CheckCircle2,
-  Sparkles,
-  Frown,
-  Scale,
-  AlertCircle,
   RotateCcw,
-  X,
   Trash2,
-  Ban,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { SharedDiceArena } from '@/components/game/SharedDiceArena';
 import { GameResultDialog } from '@/components/game/GameResultDialog';
 import { AnimatedBalanceCounter } from '@/components/ui/AnimatedBalanceCounter';
+import type { ApiGamePlayer } from '@/types';
+import { refId, refUser } from '@/lib/refs';
 
 export default function GameDetailsPage({
   params,
@@ -43,6 +35,13 @@ export default function GameDetailsPage({
   const [balanceDelta, setBalanceDelta] = useState<number | null>(null);
   const [isResultDialogOpen, setIsResultDialogOpen] = useState(false);
   const prevRollSignatureRef = useRef<string | null>(null);
+  const opponentRollTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Nettoyage des minuteries d'animation au démontage
+  useEffect(() => {
+    const timers = opponentRollTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   // Polling rapide à 1000ms pendant les parties en cours pour réactivité instantanée
   const { data: game, isLoading, refetch } = useQuery({
@@ -66,7 +65,7 @@ export default function GameDetailsPage({
     if (game?.nextGameId) {
       toast.success('⚡ Revanche confirmée ! Redirection vers la nouvelle arène...');
       fetchCurrentUser();
-      const nextId = game.nextGameId._id || game.nextGameId;
+      const nextId = refId(game.nextGameId);
       router.push(`/games/${nextId}`);
     }
   }, [game?.nextGameId, router, fetchCurrentUser]);
@@ -74,7 +73,7 @@ export default function GameDetailsPage({
   // Détection en temps réel des lancers des adversaires pour déclencher l'animation 3D simultanée
   const currentRollSignature =
     game?.players
-      ?.map((p: any) => `${p.user?._id || p.user}:${p.diceOne}:${p.diceTwo}:${p.total}`)
+      ?.map((p: ApiGamePlayer) => `${refId(p.user)}:${p.diceOne}:${p.diceTwo}:${p.total}`)
       .join('|') || '';
 
   useEffect(() => {
@@ -89,45 +88,45 @@ export default function GameDetailsPage({
       prevRollSignatureRef.current = currentRollSignature;
 
       // Si le lancer provient de l'adversaire (et qu'on ne lançait pas soi-même)
-      const playerWhoJustRolled = game.players?.find((p: any) => {
-        const pId = p.user?._id || p.user;
+      const playerWhoJustRolled = game.players?.find((p: ApiGamePlayer) => {
+        const pId = refId(p.user);
         return pId !== user?.id && (p.diceOne > 0 || p.diceTwo > 0);
       });
 
       if (playerWhoJustRolled && !isRollingMyDice) {
-        setIsOpponentRolling(true);
         toast.success(`🎲 ${playerWhoJustRolled.user?.username || 'L’adversaire'} lance les dés !`, {
           icon: '🎲',
         });
 
         // Durée exacte de l'animation 3D synchronisée
-        setTimeout(() => {
-          setIsOpponentRolling(false);
-        }, 1800);
+        opponentRollTimers.current.push(
+          setTimeout(() => setIsOpponentRolling(true), 0),
+          setTimeout(() => setIsOpponentRolling(false), 1800)
+        );
       }
     }
   }, [currentRollSignature, game, user?.id, isRollingMyDice]);
 
   const isPlayerInGame = game?.players?.some(
-    (p: any) => (p.user?._id || p.user) === user?.id
+    (p: ApiGamePlayer) => refId(p.user) === user?.id
   );
 
   const userPlayerDoc = game?.players?.find(
-    (p: any) => (p.user?._id || p.user) === user?.id
+    (p: ApiGamePlayer) => refId(p.user) === user?.id
   );
 
   const hasUserRolled = Boolean(
     userPlayerDoc && (userPlayerDoc.total > 0 || userPlayerDoc.diceOne > 0)
   );
 
-  const winnerId = game?.winner?._id || game?.winner;
+  const winnerId = refId(game?.winner);
   const isUserWinner = Boolean(game?.status === 'FINISHED' && winnerId && winnerId === user?.id);
   const isUserLoser = Boolean(
     game?.status === 'FINISHED' && winnerId && winnerId !== user?.id && isPlayerInGame
   );
   const isGameTie = Boolean(game?.status === 'FINISHED' && !winnerId);
 
-  const rematchRequesterId = game?.rematchRequestedBy?._id || game?.rematchRequestedBy;
+  const rematchRequesterId = refId(game?.rematchRequestedBy);
   const isMyRematchProposal = Boolean(
     game?.status === 'FINISHED' && rematchRequesterId && rematchRequesterId === user?.id
   );
@@ -139,7 +138,7 @@ export default function GameDetailsPage({
   );
 
   const isCreator = Boolean(
-    user && ((game?.creator?._id || game?.creator) === user.id || user.role === 'ADMIN')
+    user && (refId(game?.creator) === user.id || user.role === 'ADMIN')
   );
 
   // Ouverture automatique du Dialog Modal après la fin des lancers
@@ -232,7 +231,7 @@ export default function GameDetailsPage({
 
       if (updatedGame.status === 'FINISHED') {
         setIsResultDialogOpen(true);
-        const finWinnerId = updatedGame.winner?._id || updatedGame.winner;
+        const finWinnerId = refId(updatedGame.winner);
         if (finWinnerId === user?.id) {
           setBalanceDelta(updatedGame.totalPot);
           toast.success(`🎉 Victoire ! Vous remportez ${updatedGame.totalPot} Crédits !`);
@@ -332,7 +331,7 @@ export default function GameDetailsPage({
     return (
       <div className="glass-card p-12 rounded-3xl text-center space-y-4 animate-pulse">
         <Dices className="w-12 h-12 text-[#6C3BFF] mx-auto animate-spin" />
-        <p className="text-sm font-mono text-gray-400">Chargement de l'arène...</p>
+        <p className="text-sm font-mono text-gray-400">Chargement de l&apos;arène...</p>
       </div>
     );
   }
@@ -404,7 +403,7 @@ export default function GameDetailsPage({
       {/* 2. ARÈNE JAUNE CENTRALE (Dés Partagés & Animation 3D Simultanée) */}
       {(() => {
         const playerWhoRolled = game?.players?.find(
-          (p: any) => p.diceOne > 0 || p.diceTwo > 0
+          (p: ApiGamePlayer) => p.diceOne > 0 || p.diceTwo > 0
         );
 
         const sharedDiceOne = isArenaRolling
@@ -446,11 +445,10 @@ export default function GameDetailsPage({
       {/* 3. Tableau d'Affichage des Joueurs & Actions */}
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          {game.players?.map((playerDoc: any, idx: number) => {
-            const playerUser = playerDoc.user;
-            const isThisPlayerUser = (playerUser?._id || playerUser) === user?.id;
-            const isWinner =
-              game.winner?._id === playerUser?._id || game.winner === playerUser?._id;
+          {game.players?.map((playerDoc: ApiGamePlayer, idx: number) => {
+            const playerUser = refUser(playerDoc.user);
+            const isThisPlayerUser = refId(playerDoc.user) === user?.id;
+            const isWinner = Boolean(game.winner) && refId(game.winner) === refId(playerDoc.user);
             const hasPlayerRolled = playerDoc.total > 0 || playerDoc.diceOne > 0;
 
             return (

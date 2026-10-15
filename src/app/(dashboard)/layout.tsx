@@ -33,7 +33,7 @@ export default function DashboardLayout({
         <div className="w-48 h-1.5 bg-[#1A1D26] rounded-full overflow-hidden">
           <div className="w-full h-full bg-[#6C3BFF] animate-pulse"></div>
         </div>
-        <p className="text-xs font-mono text-gray-400 mt-3">Chargement de l'arène...</p>
+        <p className="text-xs font-mono text-gray-400 mt-3">Chargement de l&apos;arène...</p>
       </div>
     );
   }

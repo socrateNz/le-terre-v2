@@ -13,25 +13,23 @@ import {
   Dices,
   RefreshCw,
   Clock,
-  TrendingUp,
   Ban,
-  UserCheck,
   Plus,
   Minus,
-  Edit3,
   DollarSign,
   Shield,
-  KeyRound,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/useAuthStore';
+import { refUser } from '@/lib/refs';
+import type { ApiGame, ApiWithdrawRequest, ApiAdminUser } from '@/types';
 
 export default function AdminPage() {
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'WITHDRAWALS' | 'USERS' | 'GAMES'>('OVERVIEW');
   const [userSearch, setUserSearch] = useState('');
-  const [selectedUserForBalance, setSelectedUserForBalance] = useState<any | null>(null);
+  const [selectedUserForBalance, setSelectedUserForBalance] = useState<ApiAdminUser | null>(null);
   const [adjustAmount, setAdjustAmount] = useState<number>(500);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -77,13 +75,43 @@ export default function AdminPage() {
     },
   });
 
+  const handleSyncPayments = async () => {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/sync-payments', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        refetchStats();
+      } else {
+        toast.error(data.error || 'Erreur de synchronisation.');
+      }
+    } catch {
+      toast.error('Erreur réseau.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleWithdrawalAction = async (requestId: string, action: 'APPROVE' | 'REJECT') => {
+    // Codees ne propose pas de virement sortant : l'admin envoie l'argent lui-même puis saisit la référence
+    let payoutReference: string | undefined;
+    if (action === 'APPROVE') {
+      const input = window.prompt(
+        'Effectuez d\'abord le virement Mobile Money au joueur, puis saisissez sa référence (ID de transaction opérateur) :'
+      );
+      if (!input?.trim()) return;
+      payoutReference = input.trim();
+    } else if (!window.confirm('Rejeter cette demande et restituer les fonds au joueur ?')) {
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId, action }),
+        body: JSON.stringify({ requestId, action, payoutReference }),
       });
       const data = await res.json();
       if (data.success) {
@@ -100,7 +128,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleToggleUserRole = async (targetUser: any) => {
+  const handleToggleUserRole = async (targetUser: ApiAdminUser) => {
     const newRole = targetUser.role === 'ADMIN' ? 'USER' : 'ADMIN';
     if (!confirm(`Voulez-vous vraiment passer ${targetUser.username} au rôle ${newRole} ?`)) return;
 
@@ -244,7 +272,7 @@ export default function AdminPage() {
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as typeof activeTab)}
             className={`px-4 py-2.5 rounded-2xl font-mono text-xs font-bold whitespace-nowrap transition-all ${
               activeTab === tab.id
                 ? 'bg-[#6C3BFF] text-white shadow-lg purple-glow'
@@ -299,9 +327,15 @@ export default function AdminPage() {
                 <CheckCircle className="w-4 h-4" /> Statut du Système Le Terre
               </span>
               <h3 className="text-base font-black text-white">Tous les services sont opérationnels</h3>
-              <p className="text-xs text-gray-400">MongoDB Transactional Engine • WebSockets • NotchPay Webhooks</p>
+              <p className="text-xs text-gray-400">MongoDB Transactional Engine • Codees Mobile Money • Stripe</p>
             </div>
-            <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></div>
+            <button
+              onClick={handleSyncPayments}
+              disabled={isSubmitting}
+              className="py-2 px-3.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1 transition-all"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Synchroniser les dépôts
+            </button>
           </div>
         </div>
       )}
@@ -318,7 +352,7 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {withdrawalsData.map((req: any) => (
+              {withdrawalsData.map((req: ApiWithdrawRequest) => (
                 <div
                   key={req._id}
                   className="glass-card p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-white/10"
@@ -326,7 +360,7 @@ export default function AdminPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h4 className="font-bold text-white text-sm">
-                        {req.user?.username || 'Joueur'}
+                        {refUser(req.user)?.username || 'Joueur'}
                       </h4>
                       <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold">
                         {req.provider}
@@ -355,6 +389,12 @@ export default function AdminPage() {
                     {req.accountDetails?.phone && (
                       <p className="text-xs font-mono text-purple-300">
                         N° Téléphone Mobile Money : <strong>{req.accountDetails.phone}</strong>
+                      </p>
+                    )}
+
+                    {req.payoutReference && (
+                      <p className="text-xs font-mono text-emerald-300">
+                        Réf. virement : <strong>{req.payoutReference}</strong>
                       </p>
                     )}
                   </div>
@@ -402,7 +442,7 @@ export default function AdminPage() {
           </div>
 
           <div className="space-y-2.5">
-            {usersData?.map((u: any) => (
+            {usersData?.map((u: ApiAdminUser) => (
               <div
                 key={u._id}
                 className="glass-card p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-white/10"
@@ -456,14 +496,14 @@ export default function AdminPage() {
           <h3 className="font-extrabold text-white text-base">Modération des Arènes Actives</h3>
 
           <div className="space-y-3">
-            {gamesData?.map((game: any) => (
+            {gamesData?.map((game: ApiGame) => (
               <div
                 key={game._id}
                 className="glass-card p-4 rounded-2xl flex items-center justify-between border border-white/10"
               >
                 <div>
                   <h4 className="font-bold text-white text-sm">
-                    Partie de {game.creator?.username || 'Joueur'}
+                    Partie de {refUser(game.creator)?.username || 'Joueur'}
                   </h4>
                   <p className="text-xs font-mono text-gray-400">
                     Mise : <strong className="text-[#F4B400]">{game.bet} FCFA</strong> • Statut: {game.status} • Joueurs: {game.players?.length}/{game.maxPlayers}
@@ -475,7 +515,7 @@ export default function AdminPage() {
                     onClick={() => handleCancelGameByAdmin(game._id)}
                     className="py-2 px-3.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 font-bold text-xs flex items-center gap-1"
                   >
-                    <Ban className="w-3.5 h-3.5" /> Forcer l'Annulation
+                    <Ban className="w-3.5 h-3.5" /> Forcer l&apos;Annulation
                   </button>
                 )}
               </div>

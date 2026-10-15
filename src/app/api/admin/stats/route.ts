@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
 import { Game } from '@/models/Game';
@@ -9,13 +9,7 @@ import { AppError } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = getAuthUser(req);
-    if (auth.role !== 'ADMIN') {
-      return NextResponse.json(
-        { success: false, error: 'Accès réservé aux administrateurs.' },
-        { status: 403 }
-      );
-    }
+    await requireAdmin(req);
 
     await connectDB();
 
@@ -48,7 +42,7 @@ export async function GET(req: NextRequest) {
         pendingWithdrawalsCount,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }

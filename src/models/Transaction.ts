@@ -4,7 +4,7 @@ export interface ITransactionDocument extends Document {
   user: mongoose.Types.ObjectId;
   amount: number;
   type: 'CREDIT_TEST' | 'DEPOSIT' | 'WITHDRAWAL' | 'BET' | 'WIN';
-  provider: 'NOTCHPAY' | 'STRIPE' | 'TEST_CREDIT';
+  provider: 'CODEES' | 'STRIPE' | 'MANUAL' | 'NOTCHPAY' | 'TEST_CREDIT';
   paymentMethod: 'MOBILE_MONEY' | 'CARD' | 'TEST_CREDIT';
   paymentReference: string;
   providerReference?: string;
@@ -32,7 +32,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     },
     provider: {
       type: String,
-      enum: ['NOTCHPAY', 'STRIPE', 'TEST_CREDIT'],
+      enum: ['CODEES', 'STRIPE', 'MANUAL', 'NOTCHPAY', 'TEST_CREDIT'],
       default: 'TEST_CREDIT',
     },
     paymentMethod: {

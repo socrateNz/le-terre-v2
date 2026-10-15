@@ -1,12 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Dices, ShieldCheck, Zap } from 'lucide-react';
 
 export default function SplashPage() {
-  const router = useRouter();
 
   return (
     <div className="min-h-screen bg-[#0F1117] flex flex-col justify-between p-6 max-w-md mx-auto relative overflow-hidden">
@@ -34,7 +31,7 @@ export default function SplashPage() {
           </div>
           <div>
             <h3 className="font-bold text-white text-sm">Parties de Dés Instantanées</h3>
-            <p className="text-xs text-gray-400">Défiez d'autres joueurs en 1v1 ou en groupe</p>
+            <p className="text-xs text-gray-400">Défiez d&apos;autres joueurs en 1v1 ou en groupe</p>
           </div>
         </div>
 
@@ -43,7 +40,7 @@ export default function SplashPage() {
             <Zap className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-white text-sm">Recharges NotchPay & Stripe</h3>
+            <h3 className="font-bold text-white text-sm">Recharges Mobile Money & Stripe</h3>
             <p className="text-xs text-gray-400">Mobile Money (OM, MTN, Wave) & Cartes</p>
           </div>
         </div>

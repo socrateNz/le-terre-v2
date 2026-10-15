@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
 import { GAME_CONFIG } from '@/config/game';
 import toast from 'react-hot-toast';
-import { Dices, Users, Wallet, ArrowLeft, Plus, Lock, Globe, KeyRound } from 'lucide-react';
+import { Dices, Users, ArrowLeft, Plus, Lock, Globe, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CreateGamePage() {
@@ -128,7 +128,7 @@ export default function CreateGamePage() {
           {isPrivate && (
             <div className="pt-2 space-y-2 animate-fadeIn">
               <label className="text-[11px] font-mono text-yellow-400 uppercase font-bold flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5" /> Code PIN d'accès (4 chiffres)
+                <KeyRound className="w-3.5 h-3.5" /> Code PIN d&apos;accès (4 chiffres)
               </label>
               <input
                 type="password"

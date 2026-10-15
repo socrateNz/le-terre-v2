@@ -40,7 +40,7 @@ export function AnimatedBalanceCounter({
         prevValueRef.current = endValue;
         clearInterval(timer);
       } else {
-        setDisplayValue((prev) => Math.round(startValue + increment * currentStep));
+        setDisplayValue(() => Math.round(startValue + increment * currentStep));
       }
     }, stepDuration);
 

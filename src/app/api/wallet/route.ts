@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { WalletService } from '@/services/WalletService';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,10 +12,10 @@ export async function GET(req: NextRequest) {
       success: true,
       data: walletData,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur wallet.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: publicErrorMessage(error, 'Erreur wallet.') }, { status: 400 });
   }
 }

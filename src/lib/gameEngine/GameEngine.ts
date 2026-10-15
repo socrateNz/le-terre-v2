@@ -1,6 +1,7 @@
 import { DiceEngine } from './DiceEngine';
 import { TieBreaker } from './TieBreaker';
 import { PayoutEngine, PayoutCalculation } from './PayoutEngine';
+import { ValidationError } from '@/lib/errors';
 
 export interface GameExecutionPlayer {
   userId: string;
@@ -29,7 +30,7 @@ export class GameEngine {
     players: GameExecutionPlayer[]
   ): GameExecutionResult {
     if (!players || players.length < 2) {
-      throw new Error('Une partie nécessite au moins 2 joueurs.');
+      throw new ValidationError('Une partie nécessite au moins 2 joueurs.');
     }
 
     // 1. Tirage initial des dés pour chaque joueur

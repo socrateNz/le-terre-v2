@@ -35,7 +35,7 @@ export class GameRepository {
 
   public static async findAll(filters: GameFilters = {}): Promise<IGameDocument[]> {
     await connectDB();
-    const mongoFilter: any = {};
+    const mongoFilter: Record<string, unknown> = {};
 
     if (filters.status && filters.status !== 'ALL') {
       mongoFilter.status = filters.status;
@@ -44,9 +44,10 @@ export class GameRepository {
     }
 
     if (filters.minBet !== undefined || filters.maxBet !== undefined) {
-      mongoFilter.bet = {};
-      if (filters.minBet !== undefined) mongoFilter.bet.$gte = filters.minBet;
-      if (filters.maxBet !== undefined) mongoFilter.bet.$lte = filters.maxBet;
+      const bet: { $gte?: number; $lte?: number } = {};
+      if (filters.minBet !== undefined) bet.$gte = filters.minBet;
+      if (filters.maxBet !== undefined) bet.$lte = filters.maxBet;
+      mongoFilter.bet = bet;
     }
 
     if (filters.isPrivate !== undefined) {
@@ -69,7 +70,7 @@ export class GameRepository {
       return games.filter(
         (g) =>
           g._id.toString().toLowerCase().includes(s) ||
-          (g.creator as any)?.username?.toLowerCase().includes(s)
+          (g.creator as unknown as { username?: string } | null)?.username?.toLowerCase().includes(s)
       );
     }
 

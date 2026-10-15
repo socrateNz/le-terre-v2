@@ -5,8 +5,6 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  User as UserIcon,
-  Mail,
   Globe,
   Trophy,
   LogOut,
@@ -18,11 +16,11 @@ import {
   Scale,
   Calendar,
   ArrowUpRight,
-  Sparkles,
-  Lock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import type { ApiGame, ApiGamePlayer } from '@/types';
+import { refId, refUser } from '@/lib/refs';
 
 export default function ProfilePage() {
   const { user, balance, logout, fetchCurrentUser } = useAuthStore();
@@ -58,8 +56,8 @@ export default function ProfilePage() {
   const history = profileData?.history || [];
 
   // Filtrage local de l'historique des parties
-  const filteredHistory = history.filter((game: any) => {
-    const isWinner = (game.winner?._id || game.winner) === user?.id;
+  const filteredHistory = history.filter((game: ApiGame) => {
+    const isWinner = refId(game.winner) === user?.id;
     const isLoser = game.status === 'FINISHED' && game.winner && !isWinner;
 
     if (historyFilter === 'WINS') return isWinner;
@@ -197,7 +195,7 @@ export default function ProfilePage() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setHistoryFilter(tab.id as any)}
+                onClick={() => setHistoryFilter(tab.id as typeof historyFilter)}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
                   historyFilter === tab.id
                     ? 'bg-[#6C3BFF] text-white shadow-md'
@@ -220,20 +218,20 @@ export default function ProfilePage() {
           <div className="glass-card p-8 rounded-2xl text-center space-y-2">
             <Dices className="w-10 h-10 text-gray-500 mx-auto opacity-40 animate-spin" />
             <p className="text-sm font-bold text-gray-300">Aucune partie dans cet historique</p>
-            <p className="text-xs text-gray-500">Jouez dans l'arène pour enregistrer vos statistiques !</p>
+            <p className="text-xs text-gray-500">Jouez dans l&apos;arène pour enregistrer vos statistiques !</p>
           </div>
         ) : (
           <div className="space-y-2.5">
-            {filteredHistory.map((game: any) => {
+            {filteredHistory.map((game: ApiGame) => {
               const myPlayerDoc = game.players?.find(
-                (p: any) => (p.user?._id || p.user) === user?.id
+                (p: ApiGamePlayer) => refId(p.user) === user?.id
               );
 
               const opponentDoc = game.players?.find(
-                (p: any) => (p.user?._id || p.user) !== user?.id
+                (p: ApiGamePlayer) => refId(p.user) !== user?.id
               );
 
-              const isWinner = (game.winner?._id || game.winner) === user?.id;
+              const isWinner = refId(game.winner) === user?.id;
               const isFinished = game.status === 'FINISHED';
               const isTie = isFinished && !game.winner;
 
@@ -277,7 +275,7 @@ export default function ProfilePage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-white text-xs truncate">
-                          vs {opponentDoc?.user?.username || 'Adversaire'}
+                          vs {refUser(opponentDoc?.user)?.username || 'Adversaire'}
                         </h4>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${
@@ -303,7 +301,7 @@ export default function ProfilePage() {
                       <p className="text-[10px] font-mono text-gray-400 mt-0.5 truncate">
                         Score :{' '}
                         <strong className="text-white">
-                          {myPlayerDoc?.total > 0 ? `${myPlayerDoc.total} pt(s)` : '?'}
+                          {myPlayerDoc && myPlayerDoc.total > 0 ? `${myPlayerDoc.total} pt(s)` : '?'}
                         </strong>{' '}
                         • Mise : <span className="text-[#F4B400] font-bold">{game.bet} FCFA</span> •{' '}
                         {new Date(game.createdAt).toLocaleDateString('fr-FR', {
@@ -349,7 +347,7 @@ export default function ProfilePage() {
 
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div>
-                <label className="text-xs font-mono text-gray-400">Pseudo d'affichage</label>
+                <label className="text-xs font-mono text-gray-400">Pseudo d&apos;affichage</label>
                 <input
                   type="text"
                   value={username}
@@ -376,7 +374,7 @@ export default function ProfilePage() {
                   className="w-full bg-[#0F1117] border border-white/10 rounded-xl px-4 py-3 text-sm text-white mt-1 focus:border-[#6C3BFF] focus:outline-none"
                 >
                   <option value="CM">🇨🇲 Cameroun</option>
-                  <option value="CI">🇨🇮 Côte d'Ivoire</option>
+                  <option value="CI">🇨🇮 Côte d&apos;Ivoire</option>
                   <option value="SN">🇸🇳 Sénégal</option>
                   <option value="FR">🇫🇷 France</option>
                   <option value="OTHER">🌍 Autre / International</option>

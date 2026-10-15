@@ -5,7 +5,7 @@ type CacheEntry<T> = {
 };
 
 class ConvexCacheManager {
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private tagIndex = new Map<string, Set<string>>();
 
   /**

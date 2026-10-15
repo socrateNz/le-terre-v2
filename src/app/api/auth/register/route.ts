@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/AuthService';
 import { registerSchema } from '@/schemas/auth';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
@@ -26,13 +26,13 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     logger.error('Erreur inscription', error);
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json(
-      { success: false, error: error.message || 'Erreur lors de l\'inscription.' },
+      { success: false, error: publicErrorMessage(error, 'Erreur lors de l\'inscription.') },
       { status: 400 }
     );
   }

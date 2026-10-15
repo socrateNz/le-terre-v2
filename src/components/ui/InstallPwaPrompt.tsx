@@ -3,14 +3,19 @@
 import { useState, useEffect } from 'react';
 import { Download, X } from 'lucide-react';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export function InstallPwaPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowPrompt(true);
     };
 
@@ -41,7 +46,7 @@ export function InstallPwaPrompt() {
         </div>
         <div>
           <h4 className="font-bold text-white text-sm">Installer Le Terre</h4>
-          <p className="text-xs text-gray-400">Accès rapide depuis l'écran d'accueil</p>
+          <p className="text-xs text-gray-400">Accès rapide depuis l&apos;écran d&apos;accueil</p>
         </div>
       </div>
       <div className="flex items-center gap-2">

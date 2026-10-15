@@ -1,98 +1,97 @@
-import { NotchPayClient } from './notchpay';
+import { CodeesClient, detectOperator, MobileOperator, NormalizedPaymentStatus } from './codees';
 import { StripeClient } from './stripe';
 import { AppError } from './errors';
+import { PAYMENT_CONFIG, isStripeTestModeForbidden } from '@/config/payment';
 
 export interface DepositRequestParams {
   amount: number;
-  currency?: string;
   email: string;
   phone?: string;
-  country?: string;
+  operator?: MobileOperator;
   paymentMethod: 'MOBILE_MONEY' | 'CARD';
   cardToken?: string;
   reference: string;
-  baseUrl: string;
 }
 
 export interface DepositResponse {
-  provider: 'NOTCHPAY' | 'STRIPE';
-  redirectUrl: string;
+  provider: 'CODEES' | 'STRIPE';
   reference: string;
   providerReference?: string;
-  directUssd?: boolean;
-  directCardCompleted?: boolean;
+  status: NormalizedPaymentStatus;
   message?: string;
 }
 
 export class PaymentRouter {
-  public static async processDeposit(params: DepositRequestParams): Promise<DepositResponse> {
-    const { amount, email, phone, country = 'CM', paymentMethod, cardToken, reference, baseUrl } = params;
+  /** Contrôles effectués AVANT d'enregistrer la transaction en base. */
+  public static validateDeposit(params: Omit<DepositRequestParams, 'reference'>): void {
+    const { amount, paymentMethod, phone, cardToken } = params;
 
-    // 1. Mobile Money (NotchPay USSD Direct In-App)
-    if (paymentMethod === 'MOBILE_MONEY' || (country === 'CM' && paymentMethod !== 'CARD')) {
-      if (amount < 50) {
-        throw new AppError('Le montant minimum de rechargement par Mobile Money est de 50 FCFA.', 400);
+    if (paymentMethod === 'MOBILE_MONEY') {
+      const { MIN_AMOUNT, MAX_AMOUNT } = PAYMENT_CONFIG.CODEES;
+      if (amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+        throw new AppError(`Le montant Mobile Money doit être compris entre ${MIN_AMOUNT} et ${MAX_AMOUNT} FCFA.`, 400);
       }
-
-      const notchResponse = await NotchPayClient.initializePayment({
-        amount,
-        currency: 'XAF',
-        email,
-        phone,
-        reference,
-        callbackUrl: `${baseUrl}/api/webhooks/notchpay`,
-        description: `Recharge Le Terre - ${amount} FCFA`,
-      });
-
-      const trxRef = notchResponse.transaction?.reference;
-      if (trxRef && phone) {
-        try {
-          const chargeResult = await NotchPayClient.chargeDirectPayment(trxRef, phone);
-          const returnedTrxRef = chargeResult.transaction?.reference || trxRef;
-          return {
-            provider: 'NOTCHPAY',
-            redirectUrl: notchResponse.authorization_url || `${baseUrl}/wallet?ref=${reference}`,
-            reference,
-            providerReference: returnedTrxRef,
-            directUssd: true,
-            message: chargeResult.message || 'Demande USSD transmise à votre opérateur Mobile Money. Veuillez valider avec votre code PIN.',
-          };
-        } catch {
-          // Fallback sur la redirection si la charge directe USSD échoue
-        }
+      if (!phone) {
+        throw new AppError('Numéro Mobile Money requis.', 400);
       }
-
-      return {
-        provider: 'NOTCHPAY',
-        redirectUrl: notchResponse.authorization_url || `${baseUrl}/wallet?ref=${reference}`,
-        reference,
-        providerReference: trxRef,
-      };
+      if (!params.operator && !detectOperator(phone)) {
+        throw new AppError('Opérateur non reconnu : choisissez MTN ou Orange.', 400);
+      }
+      return;
     }
 
-    // 2. Carte Bancaire (Stripe Direct In-App sans aucune redirection)
-    if (amount < 350) {
+    if (amount < PAYMENT_CONFIG.STRIPE.MIN_AMOUNT) {
       throw new AppError(
-        'Le montant minimum pour un paiement par carte (Stripe) est de 350 FCFA (soit environ 0.50 €). Pour les rechargements dès 50 FCFA, utilisez Mobile Money.',
+        `Le montant minimum pour un paiement par carte est de ${PAYMENT_CONFIG.STRIPE.MIN_AMOUNT} FCFA.`,
         400
       );
     }
+    if (!cardToken) {
+      throw new AppError('Informations de carte manquantes.', 400);
+    }
+    if (isStripeTestModeForbidden()) {
+      throw new AppError('Le paiement par carte est temporairement indisponible.', 503);
+    }
+  }
 
+  public static async processDeposit(params: DepositRequestParams): Promise<DepositResponse> {
+    const { amount, email, phone, paymentMethod, cardToken, reference } = params;
+
+    // 1. Mobile Money (Codees : push USSD MTN / Orange)
+    if (paymentMethod === 'MOBILE_MONEY') {
+      const operator = params.operator || detectOperator(phone!)!;
+      const result = await CodeesClient.initiatePayment({
+        amount,
+        phone: phone!,
+        operator,
+        reference,
+        customerEmail: email,
+      });
+
+      return {
+        provider: 'CODEES',
+        reference,
+        providerReference: result.transactionId,
+        status: result.status,
+        message: result.message,
+      };
+    }
+
+    // 2. Carte Bancaire (Stripe)
     const stripeResult = await StripeClient.processDirectCardPayment({
       amount,
       currency: 'xaf',
       email,
       reference,
-      token: cardToken || 'tok_visa',
+      token: cardToken!,
     });
 
     return {
       provider: 'STRIPE',
-      redirectUrl: `${baseUrl}/wallet?status=success&ref=${reference}`,
       reference,
       providerReference: stripeResult.paymentIntentId,
-      directCardCompleted: stripeResult.status === 'succeeded',
-      message: stripeResult.message || 'Recharge par Carte validée avec succès.',
+      status: stripeResult.status,
+      message: stripeResult.message,
     };
   }
 }

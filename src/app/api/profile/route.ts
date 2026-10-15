@@ -3,7 +3,7 @@ import { getAuthUser } from '@/lib/auth';
 import { UserRepository } from '@/repositories/UserRepository';
 import { GameRepository } from '@/repositories/GameRepository';
 import { updateProfileSchema } from '@/schemas/profile';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
         history: userGames,
       },
     });
-  } catch (error: any) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erreur chargement de l\'historique profil.' }, { status: 400 });
   }
 }
@@ -64,10 +64,10 @@ export async function PUT(req: NextRequest) {
       data: updatedUser,
       message: 'Profil mis à jour avec succès.',
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur mise à jour profil.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: publicErrorMessage(error, 'Erreur mise à jour profil.') }, { status: 400 });
   }
 }

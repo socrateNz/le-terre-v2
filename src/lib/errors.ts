@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+
 export class AppError extends Error {
   public statusCode: number;
   public isOperational: boolean;
@@ -40,4 +42,13 @@ export class PaymentError extends AppError {
   constructor(message: string = 'Erreur lors du traitement du paiement.') {
     super(message, 402);
   }
+}
+
+/**
+ * Message renvoyé au client pour une erreur qui n'est pas une AppError :
+ * le détail d'une validation Zod, sinon un message générique (pas de fuite d'erreurs internes).
+ */
+export function publicErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ZodError) return error.issues[0]?.message || fallback;
+  return fallback;
 }

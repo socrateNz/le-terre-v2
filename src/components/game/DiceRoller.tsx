@@ -25,20 +25,18 @@ export function DiceRoller({
   size = 'md',
   label,
 }: DiceRollerProps) {
-  const [displayValue, setDisplayValue] = useState<number>(value || 1);
+  const [rollingValue, setRollingValue] = useState<number>(value || 1);
 
   // Animation de roulement aléatoire rapide quand isRolling est actif
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRolling) {
-      interval = setInterval(() => {
-        setDisplayValue(Math.floor(Math.random() * 6) + 1);
-      }, 70);
-    } else {
-      setDisplayValue(value || 0);
-    }
+    if (!isRolling) return;
+    const interval = setInterval(() => {
+      setRollingValue(Math.floor(Math.random() * 6) + 1);
+    }, 70);
     return () => clearInterval(interval);
-  }, [isRolling, value]);
+  }, [isRolling]);
+
+  const displayValue = isRolling ? rollingValue : value || 0;
 
   const sizeClasses = {
     sm: 'w-10 h-10 text-base',

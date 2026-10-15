@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from 'next';
+import { Plus_Jakarta_Sans, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { InstallPwaPrompt } from '@/components/ui/InstallPwaPrompt';
+
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
+const hanken = Hanken_Grotesk({ subsets: ['latin'], variable: '--font-hanken', display: 'swap' });
+const jetbrains = JetBrains_Mono({ subsets: ['latin'], weight: ['500', '700'], variable: '--font-jetbrains', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Le Terre | Élite Digital Arena',
@@ -27,13 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className="dark">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="fr" className={`dark ${jakarta.variable} ${hanken.variable} ${jetbrains.variable}`}>
       <body className="antialiased min-h-screen bg-[#0F1117] text-[#e2e2eb] selection:bg-[#6C3BFF] selection:text-white">
         <Providers>
           {children}

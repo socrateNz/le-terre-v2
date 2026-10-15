@@ -3,7 +3,7 @@ import { getAuthUser } from '@/lib/auth';
 import { GameService } from '@/services/GameService';
 import { GameRepository } from '@/repositories/GameRepository';
 import { createGameSchema } from '@/schemas/game';
-import { AppError } from '@/lib/errors';
+import { AppError, publicErrorMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       success: true,
       data: games,
     });
-  } catch (error: any) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erreur récupération des parties.' }, { status: 400 });
   }
 }
@@ -50,10 +50,10 @@ export async function POST(req: NextRequest) {
       data: game,
       message: 'Partie créée avec succès !',
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Erreur création de partie.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: publicErrorMessage(error, 'Erreur création de partie.') }, { status: 400 });
   }
 }

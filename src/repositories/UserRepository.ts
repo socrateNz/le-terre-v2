@@ -24,9 +24,10 @@ export class UserRepository {
 
   public static async findAll(search?: string): Promise<IUserDocument[]> {
     await connectDB();
-    const filter: any = {};
+    const filter: Record<string, unknown> = {};
     if (search && search.trim()) {
-      const s = search.trim();
+      // Échappe les caractères spéciaux : la recherche est littérale (pas d'injection de regex)
+      const s = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
         { username: { $regex: s, $options: 'i' } },
         { email: { $regex: s, $options: 'i' } },

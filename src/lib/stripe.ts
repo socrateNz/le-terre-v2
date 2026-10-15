@@ -1,214 +1,148 @@
+import crypto from 'crypto';
 import { PAYMENT_CONFIG } from '@/config/payment';
-
-export interface InitializeStripeParams {
-  amount: number;
-  currency: string;
-  email: string;
-  reference: string;
-  successUrl: string;
-  cancelUrl: string;
-}
+import { AppError } from './errors';
+import type { NormalizedPaymentStatus } from './codees';
 
 export interface DirectStripeCardParams {
   amount: number;
   currency?: string;
   email: string;
   reference: string;
-  token?: string;
-  cardNumber?: string;
-  expMonth?: string;
-  expYear?: string;
-  cvc?: string;
-}
-
-export interface StripeInitializeResponse {
-  sessionId?: string;
-  checkoutUrl?: string;
+  token: string;
 }
 
 export interface StripeDirectCardResponse {
-  status: 'succeeded' | 'requires_action' | 'failed';
+  status: NormalizedPaymentStatus;
   paymentIntentId?: string;
   message?: string;
 }
 
+const STRIPE_API = 'https://api.stripe.com/v1';
+const WEBHOOK_TOLERANCE_SECONDS = 300;
+
+function ensureConfigured(): string {
+  const secretKey = PAYMENT_CONFIG.STRIPE.SECRET_KEY;
+  if (!secretKey) {
+    throw new AppError('Le paiement par carte est indisponible (clé Stripe non configurée).', 503);
+  }
+  return secretKey;
+}
+
+async function stripeRequest(path: string, method: 'GET' | 'POST', body?: URLSearchParams) {
+  const secretKey = ensureConfigured();
+  const res = await fetch(`${STRIPE_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      ...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+    },
+    body: body?.toString(),
+    cache: 'no-store',
+  });
+  const data = await res.json();
+  return { ok: res.ok && !data.error, data };
+}
+
+/** Statut d'un PaymentIntent Stripe ramené au vocabulaire interne. */
+export function normalizeStripeIntentStatus(status: string): NormalizedPaymentStatus {
+  if (status === 'succeeded') return 'completed';
+  if (status === 'canceled' || status === 'requires_payment_method') return 'failed';
+  return 'pending';
+}
+
 export class StripeClient {
   /**
-   * Effectue un paiement direct par carte bancaire (Stripe) 100% In-App sans aucune redirection
+   * Paiement direct par carte (PaymentIntent confirmé immédiatement).
+   * XAF est une devise sans décimale chez Stripe : le montant est envoyé tel quel.
    */
-  public static async processDirectCardPayment(
-    params: DirectStripeCardParams
-  ): Promise<StripeDirectCardResponse> {
-    const secretKey = PAYMENT_CONFIG.STRIPE.SECRET_KEY;
+  public static async processDirectCardPayment(params: DirectStripeCardParams): Promise<StripeDirectCardResponse> {
+    const curr = (params.currency || 'xaf').toLowerCase();
 
-    // Mode simulation si clé non définie
-    if (!secretKey) {
-      return {
-        status: 'succeeded',
-        paymentIntentId: `pi_sim_${params.reference}`,
-        message: 'Recharge par Carte démo validée avec succès.',
-      };
+    const pm = await stripeRequest(
+      '/payment_methods',
+      'POST',
+      new URLSearchParams({ type: 'card', 'card[token]': params.token })
+    );
+    if (!pm.ok) {
+      throw new AppError(`Carte refusée : ${pm.data.error?.message || 'carte invalide.'}`, 400);
     }
 
-    try {
-      const curr = (params.currency || 'xaf').toLowerCase();
-      const unitAmount = Math.round(params.amount);
-
-      // 1. Créer le PaymentIntent en XAF
-      const piBody = new URLSearchParams({
-        amount: unitAmount.toString(),
+    const pi = await stripeRequest(
+      '/payment_intents',
+      'POST',
+      new URLSearchParams({
+        amount: Math.round(params.amount).toString(),
         currency: curr,
         'payment_method_types[]': 'card',
+        payment_method: pm.data.id,
+        confirm: 'true',
         description: `Recharge Le Terre - ${params.amount} FCFA`,
-        customer_email: params.email,
-        client_reference_id: params.reference,
-      });
+        receipt_email: params.email,
+        'metadata[reference]': params.reference,
+      })
+    );
 
-      const piRes = await fetch('https://api.stripe.com/v1/payment_intents', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: piBody.toString(),
-      });
-
-      const piData = await piRes.json();
-      if (!piRes.ok || piData.error) {
-        throw new Error(piData.error?.message || `Erreur Stripe PaymentIntent (${piRes.status})`);
-      }
-
-      const piId = piData.id;
-      const cardToken = params.token || 'tok_visa';
-
-      // 2. Créer le PaymentMethod Stripe via token
-      const pmBody = new URLSearchParams({
-        type: 'card',
-        'card[token]': cardToken,
-      });
-
-      const pmRes = await fetch('https://api.stripe.com/v1/payment_methods', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: pmBody.toString(),
-      });
-
-      const pmData = await pmRes.json();
-      if (!pmRes.ok || pmData.error) {
-        throw new Error(pmData.error?.message || `Erreur Carte Stripe (${pmRes.status})`);
-      }
-
-      // 3. Confirmer le PaymentIntent en direct
-      const confirmBody = new URLSearchParams({
-        payment_method: pmData.id,
-      });
-
-      const confirmRes = await fetch(`https://api.stripe.com/v1/payment_intents/${piId}/confirm`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: confirmBody.toString(),
-      });
-
-      const confirmData = await confirmRes.json();
-      if (!confirmRes.ok || confirmData.error) {
-        throw new Error(confirmData.error?.message || 'Échec de la validation de la carte.');
-      }
-
-      if (confirmData.status === 'succeeded') {
-        return {
-          status: 'succeeded',
-          paymentIntentId: piId,
-          message: 'Paiement par Carte validé avec succès !',
-        };
-      }
-
+    if (!pi.ok) {
+      const intentId = pi.data.error?.payment_intent?.id;
       return {
-        status: confirmData.status,
-        paymentIntentId: piId,
-        message: 'En attente de confirmation bancaire.',
+        status: 'failed',
+        paymentIntentId: intentId,
+        message: pi.data.error?.message || 'Échec du paiement par carte.',
       };
-    } catch (error: any) {
-      throw new Error(`Erreur Stripe Carte: ${error.message}`);
     }
+
+    const status = normalizeStripeIntentStatus(pi.data.status);
+    return {
+      status,
+      paymentIntentId: pi.data.id,
+      message:
+        status === 'completed'
+          ? 'Paiement par Carte validé avec succès !'
+          : status === 'failed'
+          ? 'Paiement par carte refusé.'
+          : 'En attente de confirmation bancaire.',
+    };
   }
 
-  public static async createCheckoutSession(
-    params: InitializeStripeParams
-  ): Promise<StripeInitializeResponse> {
-    const secretKey = PAYMENT_CONFIG.STRIPE.SECRET_KEY;
-
-    if (!secretKey) {
-      return {
-        sessionId: `sim_stripe_${params.reference}`,
-        checkoutUrl: `${params.successUrl}&reference=${params.reference}`,
-      };
-    }
-
+  /**
+   * Statut faisant foi d'un paiement Stripe (PaymentIntent `pi_` ou Checkout Session `cs_`).
+   */
+  public static async getPaymentStatus(providerReference: string): Promise<NormalizedPaymentStatus | null> {
     try {
-      const curr = (params.currency || 'xaf').toLowerCase();
-      const unitAmount = curr === 'xaf' ? Math.round(params.amount) : Math.round(params.amount * 100);
-
-      const body = new URLSearchParams({
-        'payment_method_types[]': 'card',
-        'line_items[0][price_data][currency]': curr,
-        'line_items[0][price_data][product_data][name]': `Recharge Le Terre - ${params.amount} FCFA`,
-        'line_items[0][price_data][unit_amount]': unitAmount.toString(),
-        'line_items[0][quantity]': '1',
-        mode: 'payment',
-        customer_email: params.email,
-        client_reference_id: params.reference,
-        success_url: params.successUrl,
-        cancel_url: params.cancelUrl,
-      });
-
-      const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error?.message || `Erreur Stripe HTTP ${response.status}`);
+      if (providerReference.startsWith('cs_')) {
+        const { ok, data } = await stripeRequest(`/checkout/sessions/${providerReference}`, 'GET');
+        if (!ok) return null;
+        if (data.payment_status === 'paid') return 'completed';
+        return data.status === 'expired' ? 'failed' : 'pending';
       }
 
-      return {
-        sessionId: data.id,
-        checkoutUrl: data.url,
-      };
-    } catch (error: any) {
-      throw new Error(`Erreur lors de l'initialisation de Stripe: ${error.message}`);
-    }
-  }
-
-  public static async checkSessionStatus(sessionId: string): Promise<string | null> {
-    const secretKey = PAYMENT_CONFIG.STRIPE.SECRET_KEY;
-    if (!secretKey) return null;
-
-    try {
-      const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.payment_status || null;
-      }
-      return null;
+      const { ok, data } = await stripeRequest(`/payment_intents/${providerReference}`, 'GET');
+      if (!ok) return null;
+      return normalizeStripeIntentStatus(data.status);
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Vérifie l'en-tête `Stripe-Signature` (HMAC-SHA256 de `${timestamp}.${payload}`).
+   */
+  public static verifyWebhookSignature(payload: string, header: string | null): boolean {
+    const secret = PAYMENT_CONFIG.STRIPE.WEBHOOK_SECRET;
+    if (!secret || !header) return false;
+
+    const parts = header.split(',').map((p) => p.split('='));
+    const timestamp = parts.find(([k]) => k === 't')?.[1];
+    const signatures = parts.filter(([k]) => k === 'v1').map(([, v]) => v);
+    if (!timestamp || signatures.length === 0) return false;
+
+    const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+    if (!Number.isFinite(age) || age > WEBHOOK_TOLERANCE_SECONDS) return false;
+
+    const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest();
+    return signatures.some((sig) => {
+      const received = Buffer.from(sig, 'hex');
+      return received.length === expected.length && crypto.timingSafeEqual(received, expected);
+    });
   }
 }

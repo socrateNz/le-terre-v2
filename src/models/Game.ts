@@ -92,7 +92,7 @@ const GameSchema = new Schema<IGameDocument>(
   }
 );
 
-delete (mongoose.models as any).Game;
+delete (mongoose.models as Record<string, unknown>).Game;
 
 export const Game: Model<IGameDocument> =
   mongoose.models.Game || mongoose.model<IGameDocument>('Game', GameSchema);

@@ -109,7 +109,7 @@ export function PrivateGamePasscodeModal({
             <form onSubmit={handleUnlockAndJoin} className="space-y-4">
               <div className="space-y-1.5 text-left">
                 <label className="text-[10px] font-mono text-gray-400 uppercase font-semibold flex items-center gap-1">
-                  <KeyRound className="w-3.5 h-3.5 text-[#F4B400]" /> Code PIN d'accès (4 chiffres)
+                  <KeyRound className="w-3.5 h-3.5 text-[#F4B400]" /> Code PIN d&apos;accès (4 chiffres)
                 </label>
                 <input
                   type="password"
@@ -131,7 +131,7 @@ export function PrivateGamePasscodeModal({
                   'Déverrouillage...'
                 ) : (
                   <>
-                    Rejoindre l'Arène <ArrowRight className="w-4 h-4" />
+                    Rejoindre l&apos;Arène <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>

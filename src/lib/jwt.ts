@@ -10,8 +10,9 @@ export interface JwtPayload {
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    return 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  // Pas de secret par défaut : une valeur publique permettrait de forger des tokens ADMIN
+  if (!secret || secret.length < 32) {
+    throw new Error('JWT_SECRET manquant ou trop court (32 caractères minimum) dans .env.local');
   }
   return secret;
 }
@@ -35,7 +36,7 @@ export function signToken(payload: JwtPayload): string {
     },
     secret,
     {
-      expiresIn: expiresIn as any,
+      expiresIn: expiresIn as jwt.SignOptions['expiresIn'],
     }
   );
 }
@@ -47,7 +48,7 @@ export function verifyToken(token: string): JwtPayload | null {
   try {
     const secret = getJwtSecret();
     return jwt.verify(token, secret) as JwtPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
